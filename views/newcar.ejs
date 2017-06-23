@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Car</title>
+    <% include head.ejs %>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <div class="card-block">
+            <h3>Create Vehicle</h3>
+            <form action="/create_car" method="post">
+                <fieldset class="form-group<%= validation.car_name != undefined ? ' has-danger' : '' %>">
+                    <label for="car_name">Vehicle Name</label>
+                    <input id="car_name" name="car_name" type="text" class="form-control" value="<%= input.car_name %>" placeholder="Car 1">
+                    <span class="form-control-feedback"><%= validation.car_name %></span>
+                </fieldset>
+
+                <fieldset class="form-group<%= validation.car_type != undefined ? ' has-danger' : '' %>">
+                    <label for="car_type">Vehicle Type</label>
+                    <select id="car_type" name="car_type" class="form-control">
+                        <option value="car">Car</option>
+                        <option value="van">Van</option>
+                    </select>
+                </fieldset>
+
+                <fieldset class="form-group<%= validation.car_num_seats != undefined ? ' has-danger' : '' %>">
+                    <label for="car_num_seats">Number of Seats</label>
+                    <input id="car_num_seats" name="car_num_seats" type="number" class="form-control" value="<%= input.car_num_seats === undefined ? 5 : input.car_num_seats %>">
+                    <span class="form-control-feedback"><%= validation.car_num_seats %></span>
+
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="car_notes">Notes</label>
+                    <textarea id="car_notes" name="car_notes" class="form-control" value="<%= input.car_notes %>"></textarea>
+                </fieldset>
+                <button type="submit" class="btn btn-primary">Add Vehicle</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<% include scripts.ejs %>
+</body>
+</html>

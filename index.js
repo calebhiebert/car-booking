@@ -17,6 +17,10 @@ const mg = require('nodemailer-mailgun-transport');
 const fs = require('fs');
 const ical = require('ical-generator');
 
+const google = require('googleapis');
+const googleAuth = require('google-auth-library');
+const auth = JSON.parse('{"web":{"client_id":"801316837381-r7qmmv7rrhe2elhct4jh1tock5mr2tkd.apps.googleusercontent.com","project_id":"car-booking-171719","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://accounts.google.com/o/oauth2/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"iAcWSPQsMV-_EED7-eDM7-c6"}}');
+
 const mailgunAuth = {
     auth: {
         api_key: "key-74a852390f4b035e5b486433519d326a",
@@ -430,8 +434,8 @@ function generateCalendar(booking) {
         domain: 'piikl.com',
         events: [
             {
-                start: moment(booking.startTime).toDate(),
-                end: moment(booking.returnTime).toDate(),
+                start: moment(booking.unixStartTime * 1000).format('LLL'),
+                end: moment(booking.unixReturnTime * 1000).format('LLL'),
                 summary: 'Car Booking',
                 description: 'You have booked ' + booking.vehicle.name,
                 location: 'Millenium Library parkade',

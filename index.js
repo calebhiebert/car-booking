@@ -1,6 +1,7 @@
 const PORT = 80;
 const SECRET_PASSWORD = 'Welcome123';
 
+// Import modules
 const express = require('express');
 const app = express();
 const serveStatic = require('serve-static');
@@ -9,20 +10,26 @@ const bodyParser = require('body-parser');
 const session = require('express-session');
 const sqstore = require('connect-sqlite3')(session);
 const moment = require('moment');
-
 const Promise = require('bluebird');
 const db2 = require('sqlite');
 
+// Initialize database 
 Promise.resolve()
     .then(() => db2.open('./cars.db', { Promise }))
     .catch(err => console.error(err))
     .finally(() => initDatabase());
 
+// set settings
 app.set('view engine', 'ejs');
 app.set('trust proxy', 1);
 
+// tell the app to serve static files from the dist directory
 app.use(serveStatic(path.join(__dirname, 'dist')));
+
+// allow the app to parse urlencoded POST requests
 app.use(bodyParser.urlencoded({extended: true}));
+
+// setup the session manager
 app.use(session({
     secret: 'secret',
     resave: true,
@@ -102,22 +109,29 @@ app.post('/auth', (req, res) => {
 });
 
 app.get('/create_booking', (req, res) => {
-    res.render('create_booking', { bookingRequest: req.session.bookingRequest || {} });
+    res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation: {}, moment });
 });
 
 app.post('/create_booking', async (req, res) => {
     delete req.session.proposedBooking;
 
     let booking = req.session.bookingRequest = req.body;
+    
+    let validation = basicBookingValidation(booking);
 
-    let result = await Promise.resolve(processBooking(booking));
-    console.log(result);
+    if(validation.valid) {
 
-    if(result.valid) {
-        req.session.proposedBooking = result.proposedBooking;
-        res.redirect('/booking_proposal');
+        let result = await Promise.resolve(processBooking(booking));
+        console.log(result);
+
+        if (result.valid) {
+            req.session.proposedBooking = result.proposedBooking;
+            res.redirect('/booking_proposal');
+        } else {
+            res.redirect('/no_cars');
+        }
     } else {
-        res.redirect('/no_cars');
+        res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation, moment })
     }
 });
 
@@ -174,6 +188,7 @@ app.post('/add_vehicle', async (req, res) => {
 
 app.listen(PORT, () => console.log('server running on port ') + PORT);
 
+// create tables
 async function initDatabase() {
     try {
         const [vErr, bErr] = await Promise.all([
@@ -203,6 +218,7 @@ async function initDatabase() {
     console.log('Database Ready!');
 }
 
+// save a vehicle to the database
 async function saveVehicle(vehicle) {
     if(vehicle.id === undefined) {
         const insert = await Promise.resolve(db2.prepare('INSERT INTO vehicles (name, type, num_seats, notes) VALUES (?, ?, ?, ?)'))
@@ -218,11 +234,76 @@ async function saveVehicle(vehicle) {
     }
 }
 
+// save a booking to the database
 async function saveBooking(booking) {
     return await Promise.resolve(db2.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?, ?, ?)'))
         .then(stmt => stmt.run([booking.name, booking.function, booking.numPeople, booking.unixStartTime, booking.unixReturnTime, booking.reason, booking.notes, booking.vehicle.vid]));
 }
 
+function basicBookingValidation(booking) {
+    validation = { valid: true };
+    
+    nameValid = validateText(booking.name);
+    if(nameValid !== undefined)
+        validation.name = nameValid;
+    
+    functionValid = validateText(booking.function);
+    if(functionValid !== undefined)
+        validation.name = nameValid;
+    
+    numPeopleValid = validateNumber(booking.numPeople);
+    if(numPeopleValid !== undefined)
+        validation.numPeople = numPeopleValid;
+
+    startDateValid = validateDate(booking.startDate);
+    if(startDateValid !== undefined)
+        validation.startDate = startDateValid;
+
+    returnDateValid = validateDate(booking.returnDate);
+    if(returnDateValid !== undefined)
+        validation.returnDate = returnDateValid;
+
+    startTimeValid = validateTime(booking.startTime);
+    if(startTimeValid !== undefined)
+        validation.startTime = startTimeValid;
+
+    returnTimeValid = validateTime(booking.returnTime);
+    if(returnTimeValid !== undefined)
+        validation.returnTime = returnTimeValid;
+
+    if(startDateValid === undefined && returnDateValid === undefined && startTimeValid === undefined && returnTimeValid === undefined) {
+        let startTime = moment(booking.startDate + ' ' + booking.startTime);
+        let returnTime = moment(booking.returnDate + ' ' + booking.returnTime);
+
+        let now = moment();
+
+        if(startTime.isSameOrBefore(now, 'minutes')) {
+            validation.startDate = 'The date cannot be in the past';
+        } else if (returnTime.isSameOrBefore(now, 'minutes')) {
+            validation.returnDate = 'The date cannot be in the past';
+        }
+
+        let diff = returnTime.diff(startTime, 'minutes');
+
+        if(diff < 0) {
+            validation.startTime = 'Start time cannot be after return time';
+        } else if (diff < 30) {
+            validation.returnTime = 'The minimum booking time is 30 minutes';
+        }
+    }
+
+    reasonValid = validateText(booking.reason);
+    if(reasonValid !== undefined)
+        validation.reason = reasonValid;
+
+    if(Object.keys(validation).length > 1) {
+        validation.valid = false;
+    }
+
+    return validation;
+}
+
+// process a booking object
 async function processBooking(booking) {
 
     let requestedStart;
@@ -278,7 +359,7 @@ async function processBooking(booking) {
 
     if(optimalVehicle === null) {
         // there is no car available
-        // check if something is available with less seats
+        //TODO check if something is available with less seats
         return { valid: false };
     } else {
         let proposedBooking = { name: booking.name, function: booking.function, numPeople: booking.numPeople, unixStartTime: booking.unixStartTime, unixReturnTime: booking.unixReturnTime, reason: booking.reason, notes: booking.notes, vehicle: optimalVehicle };
@@ -330,4 +411,29 @@ function validateText(value, minChars = 3, maxChars = 60, nullErr = 'This field 
     } else if (value.length < minChars || value.length > maxChars) {
         return lengthErr;
     }
+}
+
+function validateNumber(value, min = -Number.MAX_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER, nullErr = 'This field must not be blank') {
+    if(value === undefined || value === null)
+        return nullErr;
+    else if (isNaN(value))
+        return 'Please enter a number';
+    else if (value < min || value > max)
+        return 'Must be in range ' + min + ' to ' + max;
+}
+
+function validateDate(value, nullErr = 'This field must not be blank') {
+    if(value === undefined || value === null)
+        return nullErr;
+    else if (!moment(value).isValid())
+        return 'Please enter a valid date';
+}
+
+function validateTime(value, nullErr = 'This field must not be blank') {
+    let timeRegex = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
+    if(value === undefined || value === null)
+        return nullErr;
+    else if (!timeRegex.test(value))
+        return 'Must be a valid time';
 }

@@ -9,44 +9,52 @@
     <div class="card">
         <div class="card-block">
             <form action="/create_booking" method="post">
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.name != undefined ? ' has-danger' : '' %>">
                     <label for="name">What is your name?</label>
                     <input id="name" name="name" class="form-control" type="text" value="<%= bookingRequest.name %>" required>
+                    <span class="form-control-feedback"><%= validation.name %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.function != undefined ? ' has-danger' : '' %>">
                     <label for="function">Which function is using this vehicle?</label>
                     <input id="function" name="function" class="form-control" type="text" value="<%= bookingRequest.function %>" required>
+                    <span class="form-control-feedback"><%= validation.function %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.numPeople != undefined ? ' has-danger' : '' %>">
                     <label for="numPeople">How many people will be in the vehicle?</label>
                     <input id="numPeople" name="numPeople" class="form-control" type="number" value="<%= bookingRequest.numPeople %>" required>
+                    <span class="form-control-feedback"><%= validation.numPeople %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.startDate != undefined ? ' has-danger' : '' %>">
                     <label for="startDate">Date that you will be needing the vehicle</label>
                     <input id="startDate" name="startDate" class="form-control" type="date" value="<%= bookingRequest.startDate %>" required>
+                    <span class="form-control-feedback"><%= validation.startDate %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.returnDate != undefined ? ' has-danger' : '' %>">
                     <label for="returnDate">Return date of the vehicle</label>
                     <input id="returnDate" name="returnDate" class="form-control" type="date" value="<%= bookingRequest.returnDate %>" required>
+                    <span class="form-control-feedback"><%= validation.returnDate %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.startTime != undefined ? ' has-danger' : '' %>">
                     <label for="startTime">Start Time</label>
-                    <input id="startTime" name="startTime" class="form-control" type="time" <%= bookingRequest.startTime %> required>
+                    <input id="startTime" name="startTime" class="form-control" type="time" value="<%= moment(bookingRequest.startDate + ' ' + bookingRequest.startTime).format('HH:mm') %>" required>
+                    <span class="form-control-feedback"><%= validation.startTime %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.returnTime != undefined ? ' has-danger' : '' %>">
                     <label for="returnTime">Return Time</label>
-                    <input id="returnTime" name="returnTime" class="form-control" type="time" <%= bookingRequest.returnTime %> required>
+                    <input id="returnTime" name="returnTime" class="form-control" type="time" value="<%= moment(bookingRequest.returnDate + ' ' + bookingRequest.returnTime).format('HH:mm') %>" required>
+                    <span class="form-control-feedback"><%= validation.returnTime %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.reason != undefined ? ' has-danger' : '' %>">
                     <label for="reason">Reason</label>
                     <input id="reason" name="reason" class="form-control" type="text" value="<%= bookingRequest.reason %>" required>
+                    <span class="form-control-feedback"><%= validation.reason %></span>
                 </fieldset>
 
                 <fieldset class="form-group">

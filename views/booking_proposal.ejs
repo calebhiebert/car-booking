@@ -27,11 +27,11 @@
                 </tr>
                 <tr>
                     <th scope="row">Start Time</th>
-                    <td><%= moment(booking.startTime * 1000).format('LLL') %></td>
+                    <td><%= moment(booking.unixStartTime * 1000).format('LLL') %></td>
                 </tr>
                 <tr>
                     <th scope="row">Return Time</th>
-                    <td><%= moment(booking.returnTime * 1000).format('LLL') %></td>
+                    <td><%= moment(booking.unixReturnTime * 1000).format('LLL') %></td>
                 </tr>
                 <tr>
                     <th scope="row">Reason</th>
@@ -45,7 +45,7 @@
                 <% } %>
                 <tr>
                     <th scope="row">Vehicle</th>
-                    <td><%= booking.vehicle.name + (' (vid: ' + booking.vehicle.vid + ', seats ' + booking.vehicle.numSeats + ')') %></td>
+                    <td><%= booking.vehicle.name + (' (Vehicle ID: ' + booking.vehicle.vid + ', Seats ' + booking.vehicle.numSeats + ')') %></td>
                 </tr>
                 <% if (booking.vehicle.notes.length > 0) { %>
                     <tr>
@@ -56,7 +56,17 @@
             </tbody>
         </table>
     </div>
-    <a class="btn btn-primary mt-3" href="/accept_booking">Accept Booking</a>
+    <form action="/booking_proposal" method="get">
+        <div class="card mt-3">
+            <div class="card-block">
+                    <fieldset class="form-group">
+                        <label for="email">Please enter your email so we can send you a calendar invite</label>
+                        <input type="email" id="email" name="email" class="form-control" required>
+                    </fieldset>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary mt-3">Accept Booking</button>
+    </form>
 </div>
 <% include scripts.ejs %>
 </body>

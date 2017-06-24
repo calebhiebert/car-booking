@@ -35,9 +35,20 @@ app.get('/', function (req, res) {
     res.render('index');
 });
 
+app.get('/no_cars', async (req, res) => {
+    if(req.session.bookingRequest === undefined) {
+        res.send('no booking request exists!');
+    } else {
+        res.render('no_cars', { booking: req.session.bookingRequest, moment });
+    }
+});
+
 app.get('/booking_proposal', async (req, res) => {
     if(req.session.proposedBooking === undefined) {
         res.send('You do not have a booking proposal, please leave');
+    } else if (req.query.email !== undefined) {
+        req.session.email = req.query.email;
+        res.redirect('/accept_booking');
     } else {
         res.render('booking_proposal', { booking: req.session.proposedBooking, moment });
     }
@@ -46,13 +57,25 @@ app.get('/booking_proposal', async (req, res) => {
 app.get('/accept_booking', async (req, res) => {
     if(req.session.proposedBooking === undefined) {
         res.send('You do not have a booking proposal to accept!');
+    } else if (req.session.email === undefined) {
+        console.log('Missing Email!');
+        res.redirect('/booking_proposal');
     } else {
         let booking = req.session.proposedBooking;
 
-        let result = await Promise.resolve(saveBooking(booking));
-        console.log(result);
+        let valid = await Promise.resolve(processBooking(booking));
 
-        res.send('booking saved!');
+        if(valid.valid) {
+
+            let result = await Promise.resolve(saveBooking(booking));
+
+            delete req.session.proposedBooking;
+            delete req.session.bookingRequest;
+
+            res.send('booking saved!');
+        } else {
+            res.send('You took too long to accept this booking, it is no longer valid!');
+        }
     }
 });
 
@@ -79,8 +102,7 @@ app.post('/auth', (req, res) => {
 });
 
 app.get('/create_booking', (req, res) => {
-    delete req.session.operation;
-    res.render('create_booking')
+    res.render('create_booking', { bookingRequest: req.session.bookingRequest || {} });
 });
 
 app.post('/create_booking', async (req, res) => {
@@ -88,60 +110,14 @@ app.post('/create_booking', async (req, res) => {
 
     let booking = req.session.bookingRequest = req.body;
 
-    let requestedStart = moment(req.body.startDate + ' ' + req.body.startTime);
-    let requestedReturn = moment(req.body.returnDate + ' ' + req.body.returnTime);
+    let result = await Promise.resolve(processBooking(booking));
+    console.log(result);
 
-    console.log(requestedStart.format());
-    console.log(requestedReturn.format());
-
-    booking.startTime = requestedStart.unix();
-    booking.returnTime = requestedReturn.unix();
-
-    const bookings = await Promise.resolve(db2.all('SELECT * FROM bookings'));
-
-    let busyVehicles = [];
-
-    for (let booking of bookings) {
-        let bookingStart = moment(booking.start_time * 1000);
-        let bookingReturn = moment(booking.return_time * 1000);
-
-        if(requestedStart.isBetween(bookingStart, bookingReturn, null, '[]') || bookingStart.isBetween(requestedStart, requestedReturn, null, '[]')) {
-            busyVehicles.push(booking.vehicle);
-        }
-    }
-
-    let paramsQs = '';
-
-    for(let i = 0; i < busyVehicles.length; i++)
-        i === 0 ? paramsQs += '?' : paramsQs += ', ?';
-
-    const availableVehicles = await Promise.resolve(db2.prepare('SELECT vid, name, num_seats AS numSeats, notes FROM vehicles WHERE vid NOT IN (' + paramsQs + ') ORDER BY num_seats ASC'))
-        .then(stmt => stmt.all(busyVehicles));
-
-    console.log(busyVehicles);
-    console.log(availableVehicles);
-
-    let optimalVehicle = null;
-
-    availableVehicles.some(v => {
-        if (v.numSeats >= booking.numPeople) {
-            optimalVehicle = v;
-            return true;
-        } else return false;
-    });
-
-    if(optimalVehicle === null) {
-        // there is no car available
-        // check if something is available with less seats
-        res.render('no_cars', { request: booking });
-    } else {
-        let proposedBooking = { name: booking.name, function: booking.function, numPeople: booking.numPeople, startTime: booking.startTime, returnTime: booking.returnTime, reason: booking.reason, notes: booking.notes, vehicle: optimalVehicle };
-        console.log(optimalVehicle);
-        console.log(proposedBooking);
-
-        req.session.proposedBooking = proposedBooking;
-
+    if(result.valid) {
+        req.session.proposedBooking = result.proposedBooking;
         res.redirect('/booking_proposal');
+    } else {
+        res.redirect('/no_cars');
     }
 });
 
@@ -244,7 +220,71 @@ async function saveVehicle(vehicle) {
 
 async function saveBooking(booking) {
     return await Promise.resolve(db2.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?, ?, ?)'))
-        .then(stmt => stmt.run([booking.name, booking.function, booking.numPeople, booking.startTime, booking.returnTime, booking.reason, booking.notes, booking.vehicle.vid]));
+        .then(stmt => stmt.run([booking.name, booking.function, booking.numPeople, booking.unixStartTime, booking.unixReturnTime, booking.reason, booking.notes, booking.vehicle.vid]));
+}
+
+async function processBooking(booking) {
+
+    let requestedStart;
+    let requestedReturn;
+
+    if(booking.unixStartTime !== undefined)
+        requestedStart = moment(booking.unixStartTime * 1000);
+
+    if(booking.unixReturnTime !== undefined)
+        requestedReturn = moment(booking.unixStartTime * 1000);
+
+    if(booking.startDate !== undefined && booking.startTime !== undefined)
+        requestedStart = moment(booking.startDate + ' ' + booking.startTime);
+
+    if(booking.returnDate !== undefined && booking.returnTime !== undefined)
+        requestedReturn = moment(booking.returnDate + ' ' + booking.returnTime);
+
+    booking.unixStartTime = requestedStart.unix();
+    booking.unixReturnTime = requestedReturn.unix();
+
+    const bookings = await Promise.resolve(db2.all('SELECT * FROM bookings'));
+
+    let busyVehicles = [];
+
+    for (let booking of bookings) {
+        let bookingStart = moment(booking.start_time * 1000);
+        let bookingReturn = moment(booking.return_time * 1000);
+
+        if(requestedStart.isBetween(bookingStart, bookingReturn, null, '(]') || bookingStart.isBetween(requestedStart, requestedReturn, null, '[]')) {
+            busyVehicles.push(booking.vehicle);
+        }
+    }
+
+    let paramsQs = '';
+
+    for(let i = 0; i < busyVehicles.length; i++)
+        i === 0 ? paramsQs += '?' : paramsQs += ', ?';
+
+    const availableVehicles = await Promise.resolve(db2.prepare('SELECT vid, name, num_seats AS numSeats, notes FROM vehicles WHERE vid NOT IN (' + paramsQs + ') ORDER BY num_seats ASC'))
+        .then(stmt => stmt.all(busyVehicles));
+
+    console.log(busyVehicles);
+    console.log(availableVehicles);
+
+    let optimalVehicle = null;
+
+    availableVehicles.some(v => {
+        if (v.numSeats >= booking.numPeople) {
+            optimalVehicle = v;
+            return true;
+        } else return false;
+    });
+
+    if(optimalVehicle === null) {
+        // there is no car available
+        // check if something is available with less seats
+        return { valid: false };
+    } else {
+        let proposedBooking = { name: booking.name, function: booking.function, numPeople: booking.numPeople, unixStartTime: booking.unixStartTime, unixReturnTime: booking.unixReturnTime, reason: booking.reason, notes: booking.notes, vehicle: optimalVehicle };
+
+        return { valid: true, proposedBooking };
+    }
 }
 
 class Vehicle {

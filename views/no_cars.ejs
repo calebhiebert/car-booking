@@ -10,10 +10,10 @@
         <div class="text-center">
             <h1>Uh Oh!</h1>
             <strong>:(</strong>
-            <p>There are no vehicles available between <%= moment(booking.startTime * 1000).format('LLL') %> and <%= moment(booking.returnTime * 1000).format('LLL') %></p>
+            <p>There are no vehicles available between <%= moment(booking.unixStartTime * 1000).format('LLL') %> and <%= moment(booking.unixReturnTime * 1000).format('LLL') %></p>
         </div>
     </div>
-    <a class="btn btn-primary mt-3" href="/accept_booking">Accept Booking</a>
+    <a class="btn btn-primary mt-3" href="/create_booking">Revise Booking</a>
 </div>
 <% include scripts.ejs %>
 </body>

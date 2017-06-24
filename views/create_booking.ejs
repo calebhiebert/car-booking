@@ -11,47 +11,47 @@
             <form action="/create_booking" method="post">
                 <fieldset class="form-group">
                     <label for="name">What is your name?</label>
-                    <input id="name" name="name" class="form-control" type="text" required>
+                    <input id="name" name="name" class="form-control" type="text" value="<%= bookingRequest.name %>" required>
                 </fieldset>
 
                 <fieldset class="form-group">
                     <label for="function">Which function is using this vehicle?</label>
-                    <input id="function" name="function" class="form-control" type="text" required>
+                    <input id="function" name="function" class="form-control" type="text" value="<%= bookingRequest.function %>" required>
                 </fieldset>
 
                 <fieldset class="form-group">
                     <label for="numPeople">How many people will be in the vehicle?</label>
-                    <input id="numPeople" name="numPeople" class="form-control" type="number" required>
+                    <input id="numPeople" name="numPeople" class="form-control" type="number" value="<%= bookingRequest.numPeople %>" required>
                 </fieldset>
 
                 <fieldset class="form-group">
                     <label for="startDate">Date that you will be needing the vehicle</label>
-                    <input id="startDate" name="startDate" class="form-control" type="date" required>
+                    <input id="startDate" name="startDate" class="form-control" type="date" value="<%= bookingRequest.startDate %>" required>
                 </fieldset>
 
                 <fieldset class="form-group">
                     <label for="returnDate">Return date of the vehicle</label>
-                    <input id="returnDate" name="returnDate" class="form-control" type="date" required>
+                    <input id="returnDate" name="returnDate" class="form-control" type="date" value="<%= bookingRequest.returnDate %>" required>
                 </fieldset>
 
                 <fieldset class="form-group">
                     <label for="startTime">Start Time</label>
-                    <input id="startTime" name="startTime" class="form-control" type="time" required>
+                    <input id="startTime" name="startTime" class="form-control" type="time" <%= bookingRequest.startTime %> required>
                 </fieldset>
 
                 <fieldset class="form-group">
                     <label for="returnTime">Return Time</label>
-                    <input id="returnTime" name="returnTime" class="form-control" type="time" required>
+                    <input id="returnTime" name="returnTime" class="form-control" type="time" <%= bookingRequest.returnTime %> required>
                 </fieldset>
 
                 <fieldset class="form-group">
                     <label for="reason">Reason</label>
-                    <input id="reason" name="reason" class="form-control" type="text" required>
+                    <input id="reason" name="reason" class="form-control" type="text" value="<%= bookingRequest.reason %>" required>
                 </fieldset>
 
                 <fieldset class="form-group">
                     <label for="notes">Additional information</label>
-                    <input id="notes" name="notes" class="form-control" type="text">
+                    <input id="notes" name="notes" class="form-control" type="text" value="<%= bookingRequest.notes %>">
                 </fieldset>
 
                 <button type="submit" class="btn btn-primary">Submit</button>

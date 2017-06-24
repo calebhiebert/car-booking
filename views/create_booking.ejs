@@ -7,6 +7,8 @@
 <body>
 <div class="container mt-3">
     <div class="card">
+        <h3 class="mt-3 ml-3">Booking Request Form</h3>
+
         <div class="card-block">
             <form action="/create_booking" method="post">
                 <fieldset class="form-group<%= validation.name != undefined ? ' has-danger' : '' %>">
@@ -41,13 +43,13 @@
 
                 <fieldset class="form-group<%= validation.startTime != undefined ? ' has-danger' : '' %>">
                     <label for="startTime">Start Time</label>
-                    <input id="startTime" name="startTime" class="form-control" type="time" value="<%= moment(bookingRequest.startDate + ' ' + bookingRequest.startTime).format('HH:mm') %>" required>
+                    <input id="startTime" name="startTime" class="form-control" type="time" value="<%= bookingRequest.startTime !== undefined ? moment(bookingRequest.startDate + ' ' + bookingRequest.startTime).format('HH:mm') : '' %>" required>
                     <span class="form-control-feedback"><%= validation.startTime %></span>
                 </fieldset>
 
                 <fieldset class="form-group<%= validation.returnTime != undefined ? ' has-danger' : '' %>">
                     <label for="returnTime">Return Time</label>
-                    <input id="returnTime" name="returnTime" class="form-control" type="time" value="<%= moment(bookingRequest.returnDate + ' ' + bookingRequest.returnTime).format('HH:mm') %>" required>
+                    <input id="returnTime" name="returnTime" class="form-control" type="time" value="<%= bookingRequest.startTime !== undefined ? moment(bookingRequest.returnDate + ' ' + bookingRequest.returnTime).format('HH:mm') : '' %>" required>
                     <span class="form-control-feedback"><%= validation.returnTime %></span>
                 </fieldset>
 

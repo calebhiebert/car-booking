@@ -12,6 +12,19 @@ const sqstore = require('connect-sqlite3')(session);
 const moment = require('moment');
 const Promise = require('bluebird');
 const db2 = require('sqlite');
+const nodemailer = require('nodemailer');
+const mg = require('nodemailer-mailgun-transport');
+const fs = require('fs');
+const ical = require('ical-generator');
+
+const mailgunAuth = {
+    auth: {
+        api_key: "key-74a852390f4b035e5b486433519d326a",
+        domain: "mail.piikl.com"
+    }
+};
+
+const mailTransporter = nodemailer.createTransport(mg(mailgunAuth));
 
 // Initialize database 
 Promise.resolve()
@@ -40,6 +53,26 @@ app.use(session({
 
 app.get('/', function (req, res) {
     res.render('index');
+});
+
+app.get('/dash', async (req, res) => {
+
+    const bookings = await Promise.resolve(db2.prepare('SELECT rowid AS id, name, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
+        .then(stmt => stmt.all([moment().unix(), moment().unix()]));
+
+    for(let booking of bookings) {
+
+        booking.startTime = moment(booking.startTime * 1000);
+        booking.returnTime = moment(booking.returnTime * 1000);
+
+        booking.vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?'))
+            .then(stmt => stmt.get([booking.vehicle]));
+        console.log('Loaded vehicle for car ' + booking.id);
+    }
+
+    console.log(bookings);
+
+    res.render('dash', { bookings, moment });
 });
 
 app.get('/no_cars', async (req, res) => {
@@ -73,13 +106,14 @@ app.get('/accept_booking', async (req, res) => {
         let valid = await Promise.resolve(processBooking(booking));
 
         if(valid.valid) {
-
             let result = await Promise.resolve(saveBooking(booking));
+
+            sendEmail(booking, req.session.email);
 
             delete req.session.proposedBooking;
             delete req.session.bookingRequest;
 
-            res.send('booking saved!');
+            res.redirect('/dash');
         } else {
             res.send('You took too long to accept this booking, it is no longer valid!');
         }
@@ -366,6 +400,47 @@ async function processBooking(booking) {
 
         return { valid: true, proposedBooking };
     }
+}
+
+function sendEmail(booking, email) {
+    let cal = generateCalendar(booking);
+
+    let mailOptions = {
+        from: '"Car Booker", <calebkhiebert@gmail.com>',
+        to: booking.name + ' <' + email + '>',
+        subject: 'Car Booking',
+        text: 'This is your car booking event',
+        html: '',
+        attachments: [
+            {
+                filename: 'booking.ics',
+                content: cal.toString()
+            }
+        ]
+    };
+
+    mailTransporter.sendMail(mailOptions, (err, info) => {
+        console.log(err);
+        console.log(info);
+    });
+}
+
+function generateCalendar(booking) {
+    let cal = ical({
+        domain: 'piikl.com',
+        events: [
+            {
+                start: moment(booking.startTime).toDate(),
+                end: moment(booking.returnTime).toDate(),
+                summary: 'Car Booking',
+                description: 'You have booked ' + booking.vehicle.name,
+                location: 'Millenium Library parkade',
+                organizer: 'Car Booker <carbooker@piikl.com>'
+            }
+        ]
+    });
+
+    return cal;
 }
 
 class Vehicle {

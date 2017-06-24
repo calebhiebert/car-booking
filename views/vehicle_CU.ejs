@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Car</title>
+    <% include head.ejs %>
+</head>
+<body>
+
+<div class="container mt-3">
+    <div class="card">
+        <div class="card-block">
+            <h3>Create Vehicle</h3>
+            <form action="/add_vehicle" method="post">
+                <% if(operation == 'edit') { %>
+                    <input name="id" value="<%= input.id %>" type="hidden">
+                <% } %>
+                <fieldset class="form-group<%= validation.name != undefined ? ' has-danger' : '' %>">
+                    <label for="car_name">Vehicle Name</label>
+                    <input id="car_name" name="name" type="text" class="form-control" value="<%= input.name %>" placeholder="Car 1">
+                    <span class="form-control-feedback"><%= validation.name %></span>
+                </fieldset>
+
+                <fieldset class="form-group<%= validation.type != undefined ? ' has-danger' : '' %>">
+                    <label for="car_type">Vehicle Type</label>
+                    <select id="car_type" name="type" class="form-control">
+                        <option value="car">Car</option>
+                        <option value="van">Van</option>
+                    </select>
+                </fieldset>
+
+                <fieldset class="form-group<%= validation.numSeats != undefined ? ' has-danger' : '' %>">
+                    <label for="car_num_seats">Number of Seats</label>
+                    <input id="car_num_seats" name="numSeats" type="number" class="form-control" value="<%= input.numSeats === undefined ? 5 : input.numSeats %>">
+                    <span class="form-control-feedback"><%= validation.car_num_seats %></span>
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="car_notes">Notes</label>
+                    <textarea id="car_notes" name="notes" class="form-control" value="<%= input.notes %>"></textarea>
+                </fieldset>
+                <button type="submit" class="btn btn-primary"><%= operation == 'create' ? 'Add Vehicle' : 'Save' %></button>
+                <% if(operation == 'edit') { %>
+                    <a class="btn btn-outline-danger" href="/delete_vehicle/<%= input.id %>">Remove Vehicle</a>
+                <% } %>
+            </form>
+        </div>
+    </div>
+</div>
+
+<% include scripts.ejs %>
+</body>
+</html>

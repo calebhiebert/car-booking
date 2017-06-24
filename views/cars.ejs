@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Cars</title>
+    <% include head.ejs %>
+</head>
+<body>
+<div class="container mt-3">
+    <div class="card">
+        <!--<div class="card-block">-->
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Id</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Number of Seats</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% vehicles.forEach(vehicle => { %>
+                        <tr>
+                            <td><a href="/edit_vehicle/<%= vehicle.id %>">Edit</a></td>
+                            <th scope="row"><%= vehicle.id %></th>
+                            <td><%= vehicle.name %></td>
+                            <td><%= vehicle.type %></td>
+                            <td><%= vehicle.numSeats %></td>
+                            <td><%- vehicle.notes || '<i class="text-muted">None</i>' %></td>
+                        </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        <!--</div>-->
+    </div>
+</div>
+
+<% include scripts.ejs %>
+</body>
+</html>

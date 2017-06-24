@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Car Booking</title>
+    <% include head.ejs %>
+</head>
+<body>
+<div class="container mt-3">
+    <div class="card">
+        <div class="card-block">
+            <form action="/create_booking" method="post">
+                <fieldset class="form-group">
+                    <label for="name">What is your name?</label>
+                    <input id="name" name="name" class="form-control" type="text" required>
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="function">Which function is using this vehicle?</label>
+                    <input id="function" name="function" class="form-control" type="text" required>
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="numPeople">How many people will be in the vehicle?</label>
+                    <input id="numPeople" name="numPeople" class="form-control" type="number" required>
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="startDate">Date that you will be needing the vehicle</label>
+                    <input id="startDate" name="startDate" class="form-control" type="date" required>
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="returnDate">Return date of the vehicle</label>
+                    <input id="returnDate" name="returnDate" class="form-control" type="date" required>
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="startTime">Start Time</label>
+                    <input id="startTime" name="startTime" class="form-control" type="time" required>
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="returnTime">Return Time</label>
+                    <input id="returnTime" name="returnTime" class="form-control" type="time" required>
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="reason">Reason</label>
+                    <input id="reason" name="reason" class="form-control" type="text" required>
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="notes">Additional information</label>
+                    <input id="notes" name="notes" class="form-control" type="text">
+                </fieldset>
+
+                <button type="submit" class="btn btn-primary">Submit</button>
+            </form>
+        </div>
+    </div>
+</div>
+<% include scripts.ejs %>
+</body>
+</html>

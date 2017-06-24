@@ -30,8 +30,6 @@ app.get('/create_booking', (req, res) => {
 });
 
 app.post('/create_booking', (req, res) => {
-    console.log(req.body);
-
     let booking = req.body;
 
     let start = moment(req.body.startDate + ' ' + req.body.startTime);
@@ -43,7 +41,42 @@ app.post('/create_booking', (req, res) => {
     booking.startTime = start.unix();
     booking.returnTime = end.unix();
 
-    saveBooking(booking);
+    //saveBooking(booking);
+
+    db.all('SELECT * FROM bookings', (err, res) => {
+        db.all('SELECT rowid FROM vehicles', (err, vehicles) => {
+            let killList = [];
+            let vehiculars = [];
+
+            console.log(vehicles);
+            for(v of vehicles) {
+                vehiculars.push(v.rowid);
+            }
+
+            if(err)
+                console.log(err);
+            else {
+                for(let booking of res) {
+                    let s = moment(booking.start_time * 1000);
+                    let e = moment(booking.return_time * 1000);
+
+                    console.log(s.format('LLL'));
+                    console.log(e.format('LLL'));
+
+                    if(start.isBetween(s, e, null, '[]')) {
+                        killList.push(booking);
+
+                        let ind = vehiculars.indexOf(booking.vehicle);
+
+                        if(ind !== -1)
+                            vehiculars.splice(ind, 1);
+                    }
+                }
+            }
+
+            console.log(JSON.stringify(vehiculars));
+        });
+    });
 
     res.send('hi there');
 });

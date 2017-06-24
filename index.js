@@ -1,4 +1,5 @@
 const PORT = 80;
+const SECRET_PASSWORD = 'Welcome123';
 
 const express = require('express');
 const app = express();
@@ -7,20 +8,47 @@ const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
 const session = require('express-session');
+const sqstore = require('connect-sqlite3')(session);
 const moment = require('moment');
 const db = new sqlite3.Database('cars.db', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, () => initDatabase());
 
 app.set('view engine', 'ejs');
+app.set('trust proxy', 1);
 
 app.use(serveStatic(path.join(__dirname, 'dist')));
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(session({
     secret: 'secret',
-    cookie: { secure: true }
+    resave: true,
+    store: new sqstore({table: 'sessions', dir: '.'}),
+    saveUninitialized: true,
+    cookie: { }
 }));
 
 app.get('/', function (req, res) {
     res.render('index');
+});
+
+app.get('/auth', (req, res) => {
+    if(req.session.authenticated) {
+        res.redirect('/');
+    } else {
+        res.render('auth', {method: 'get'});
+    }
+});
+
+app.post('/auth', (req, res) => {
+    if(req.body.password === SECRET_PASSWORD) {
+        req.session.authenticated = true;
+
+        if(req.session.returnTo !== undefined)
+            res.redirect(req.session.returnTo);
+        else
+            res.redirect('/');
+    } else {
+        res.render('auth', {authenticated: false, method: 'post'})
+    }
+
 });
 
 app.get('/create_booking', (req, res) => {
@@ -82,39 +110,56 @@ app.post('/create_booking', (req, res) => {
 });
 
 app.get('/vehicles', (req, res) => {
-    db.all('SELECT rowid AS id, name, type, num_seats AS numSeats, notes FROM vehicles', (err, rows) => {
-        if(err) {
-            console.log(err);
-        } else {
-            res.render('cars', { vehicles: rows });
-        }
-    });
+    if(req.session.authenticated) {
+        db.all('SELECT rowid AS id, name, type, num_seats AS numSeats, notes FROM vehicles', (err, rows) => {
+            if (err) {
+                console.log(err);
+            } else {
+                res.render('cars', {vehicles: rows});
+            }
+        });
+    } else {
+        req.session.returnTo = '/vehicles';
+        res.redirect('/auth');
+    }
 });
 
 app.get('/add_vehicle', (req, res) => {
-    req.session.operation = 'create';
-    res.render('vehicle_CU', { validation: {}, input: {}, operation: 'create' });
+    console.log(req.session);
+
+    if(req.session.authenticated) {
+        req.session.operation = 'create';
+        res.render('vehicle_CU', {validation: {}, input: {}, operation: 'create'});
+    } else {
+        res.redirect('/auth');
+    }
 });
 
 app.get('/edit_vehicle/:id', (req, res) => {
-    req.session.operation = 'edit';
-    db.prepare('SELECT rowid AS id, name, type, num_seats AS numSeats, notes FROM vehicles WHERE rowid = ?').get(req.params.id, (err, vehicle) => {
-        console.log(vehicle);
-        res.render('vehicle_CU', {validation: {}, input: vehicle, operation: req.session.operation})
-    });
+    if(req.session.authenticated) {
+        req.session.operation = 'edit';
+        db.prepare('SELECT rowid AS id, name, type, num_seats AS numSeats, notes FROM vehicles WHERE rowid = ?').get(req.params.id, (err, vehicle) => {
+            console.log(vehicle);
+            res.render('vehicle_CU', {validation: {}, input: vehicle, operation: req.session.operation})
+        });
+    } else {
+        res.redirect('/auth');
+    }
 });
 
 app.post('/add_vehicle', (req, res) => {
-    console.log(req.body);
+    if(req.session.authenticated) {
+        let vehicle = new Vehicle(req.body.name, req.body.type, req.body.numSeats, req.body.notes).setId(req.body.id);
+        let validation = vehicle.validate();
 
-    let vehicle = new Vehicle(req.body.name, req.body.type, req.body.numSeats, req.body.notes).setId(req.body.id);
-    let validation = vehicle.validate();
-
-    if(validation.valid) {
-        saveVehicle(vehicle);
-        res.redirect('/vehicles');
+        if (validation.valid) {
+            saveVehicle(vehicle);
+            res.redirect('/vehicles');
+        } else {
+            res.render('vehicle_CU', {validation, input: req.body, operation: req.session.operation})
+        }
     } else {
-        res.render('newcar', { validation, input: req.body, operation: req.session.operation})
+        res.redirect('/auth');
     }
 });
 

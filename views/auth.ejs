@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Authentication</title>
+    <% include head.ejs %>
+</head>
+<body>
+<div class="container mt-3">
+    <div class="alert alert-danger">
+        Looks like you are not authorized to view this page!
+        Please enter the super secret password below.
+    </div>
+    <div class="card">
+        <div class="card-block">
+            <form action="/auth" method="post">
+                <fieldset class="form-group">
+                    <label for="password">Super Secret Password</label>
+                    <input id="password" name="password" type="password" class="form-control">
+                </fieldset>
+                <% if(method == 'post' && !authenticated) { %>
+                    <div class="alert alert-warning">That password is not correct!</div>
+                <% } %>
+                <button type="submit" class="btn btn-primary">Authenticate</button>
+            </form>
+        </div>
+    </div>
+</div>
+<% include scripts.ejs %>
+</body>
+</html>

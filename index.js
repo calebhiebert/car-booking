@@ -5,12 +5,18 @@ const express = require('express');
 const app = express();
 const serveStatic = require('serve-static');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const sqstore = require('connect-sqlite3')(session);
 const moment = require('moment');
-const db = new sqlite3.Database('cars.db', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, () => initDatabase());
+
+const Promise = require('bluebird');
+const db2 = require('sqlite');
+
+Promise.resolve()
+    .then(() => db2.open('./cars.db', { Promise }))
+    .catch(err => console.error(err))
+    .finally(() => initDatabase());
 
 app.set('view engine', 'ejs');
 app.set('trust proxy', 1);
@@ -27,6 +33,27 @@ app.use(session({
 
 app.get('/', function (req, res) {
     res.render('index');
+});
+
+app.get('/booking_proposal', async (req, res) => {
+    if(req.session.proposedBooking === undefined) {
+        res.send('You do not have a booking proposal, please leave');
+    } else {
+        res.render('booking_proposal', { booking: req.session.proposedBooking, moment });
+    }
+});
+
+app.get('/accept_booking', async (req, res) => {
+    if(req.session.proposedBooking === undefined) {
+        res.send('You do not have a booking proposal to accept!');
+    } else {
+        let booking = req.session.proposedBooking;
+
+        let result = await Promise.resolve(saveBooking(booking));
+        console.log(result);
+
+        res.send('booking saved!');
+    }
 });
 
 app.get('/auth', (req, res) => {
@@ -53,71 +80,78 @@ app.post('/auth', (req, res) => {
 
 app.get('/create_booking', (req, res) => {
     delete req.session.operation;
-
-    res.render('create_booking.ejs')
+    res.render('create_booking')
 });
 
-app.post('/create_booking', (req, res) => {
-    let booking = req.body;
+app.post('/create_booking', async (req, res) => {
+    delete req.session.proposedBooking;
 
-    let start = moment(req.body.startDate + ' ' + req.body.startTime);
-    let end = moment(req.body.returnDate + ' ' + req.body.returnTime);
+    let booking = req.session.bookingRequest = req.body;
 
-    console.log(start.format());
-    console.log(end.format());
+    let requestedStart = moment(req.body.startDate + ' ' + req.body.startTime);
+    let requestedReturn = moment(req.body.returnDate + ' ' + req.body.returnTime);
 
-    booking.startTime = start.unix();
-    booking.returnTime = end.unix();
+    console.log(requestedStart.format());
+    console.log(requestedReturn.format());
 
-    //saveBooking(booking);
+    booking.startTime = requestedStart.unix();
+    booking.returnTime = requestedReturn.unix();
 
-    db.all('SELECT * FROM bookings', (err, res) => {
-        db.all('SELECT rowid FROM vehicles', (err, vehicles) => {
-            let killList = [];
-            let vehiculars = [];
+    const bookings = await Promise.resolve(db2.all('SELECT * FROM bookings'));
 
-            console.log(vehicles);
-            for(v of vehicles) {
-                vehiculars.push(v.rowid);
-            }
+    let busyVehicles = [];
 
-            if(err)
-                console.log(err);
-            else {
-                for(let booking of res) {
-                    let s = moment(booking.start_time * 1000);
-                    let e = moment(booking.return_time * 1000);
+    for (let booking of bookings) {
+        let bookingStart = moment(booking.start_time * 1000);
+        let bookingReturn = moment(booking.return_time * 1000);
 
-                    console.log(s.format('LLL'));
-                    console.log(e.format('LLL'));
+        if(requestedStart.isBetween(bookingStart, bookingReturn, null, '[]') || bookingStart.isBetween(requestedStart, requestedReturn, null, '[]')) {
+            busyVehicles.push(booking.vehicle);
+        }
+    }
 
-                    if(start.isBetween(s, e, null, '[]')) {
-                        killList.push(booking);
+    let paramsQs = '';
 
-                        let ind = vehiculars.indexOf(booking.vehicle);
+    for(let i = 0; i < busyVehicles.length; i++)
+        i === 0 ? paramsQs += '?' : paramsQs += ', ?';
 
-                        if(ind !== -1)
-                            vehiculars.splice(ind, 1);
-                    }
-                }
-            }
+    const availableVehicles = await Promise.resolve(db2.prepare('SELECT vid, name, num_seats AS numSeats, notes FROM vehicles WHERE vid NOT IN (' + paramsQs + ') ORDER BY num_seats ASC'))
+        .then(stmt => stmt.all(busyVehicles));
 
-            console.log(JSON.stringify(vehiculars));
-        });
+    console.log(busyVehicles);
+    console.log(availableVehicles);
+
+    let optimalVehicle = null;
+
+    availableVehicles.some(v => {
+        if (v.numSeats >= booking.numPeople) {
+            optimalVehicle = v;
+            return true;
+        } else return false;
     });
 
-    res.send('hi there');
+    if(optimalVehicle === null) {
+        // there is no car available
+        // check if something is available with less seats
+        res.render('no_cars', { request: booking });
+    } else {
+        let proposedBooking = { name: booking.name, function: booking.function, numPeople: booking.numPeople, startTime: booking.startTime, returnTime: booking.returnTime, reason: booking.reason, notes: booking.notes, vehicle: optimalVehicle };
+        console.log(optimalVehicle);
+        console.log(proposedBooking);
+
+        req.session.proposedBooking = proposedBooking;
+
+        res.redirect('/booking_proposal');
+    }
 });
 
-app.get('/vehicles', (req, res) => {
+app.get('/vehicles', async (req, res) => {
     if(req.session.authenticated) {
-        db.all('SELECT rowid AS id, name, type, num_seats AS numSeats, notes FROM vehicles', (err, rows) => {
-            if (err) {
-                console.log(err);
-            } else {
-                res.render('cars', {vehicles: rows});
-            }
-        });
+        const vehicles = await Promise.resolve(
+            db2.all('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles')
+        );
+
+        res.render('cars', { vehicles });
     } else {
         req.session.returnTo = '/vehicles';
         res.redirect('/auth');
@@ -125,8 +159,6 @@ app.get('/vehicles', (req, res) => {
 });
 
 app.get('/add_vehicle', (req, res) => {
-    console.log(req.session);
-
     if(req.session.authenticated) {
         req.session.operation = 'create';
         res.render('vehicle_CU', {validation: {}, input: {}, operation: 'create'});
@@ -135,25 +167,26 @@ app.get('/add_vehicle', (req, res) => {
     }
 });
 
-app.get('/edit_vehicle/:id', (req, res) => {
+app.get('/edit_vehicle/:id', async (req, res) => {
     if(req.session.authenticated) {
         req.session.operation = 'edit';
-        db.prepare('SELECT rowid AS id, name, type, num_seats AS numSeats, notes FROM vehicles WHERE rowid = ?').get(req.params.id, (err, vehicle) => {
-            console.log(vehicle);
-            res.render('vehicle_CU', {validation: {}, input: vehicle, operation: req.session.operation})
-        });
+
+        const vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = $vid'))
+            .then(stmt => stmt.get({$vid: req.params.id}));
+
+        res.render('vehicle_CU', { validation: {}, input: vehicle, operation: req.session.operation});
     } else {
         res.redirect('/auth');
     }
 });
 
-app.post('/add_vehicle', (req, res) => {
+app.post('/add_vehicle', async (req, res) => {
     if(req.session.authenticated) {
         let vehicle = new Vehicle(req.body.name, req.body.type, req.body.numSeats, req.body.notes).setId(req.body.id);
         let validation = vehicle.validate();
 
         if (validation.valid) {
-            saveVehicle(vehicle);
+            let id = await Promise.resolve(saveVehicle(vehicle));
             res.redirect('/vehicles');
         } else {
             res.render('vehicle_CU', {validation, input: req.body, operation: req.session.operation})
@@ -165,40 +198,53 @@ app.post('/add_vehicle', (req, res) => {
 
 app.listen(PORT, () => console.log('server running on port ') + PORT);
 
-function initDatabase() {
-    db.run('CREATE TABLE IF NOT EXISTS vehicles (' +
-        'name TEXT,' +
-        'type TEXT,' +
-        'num_seats NUMBER,' +
-        'notes TEXT' +
-        ')');
+async function initDatabase() {
+    try {
+        const [vErr, bErr] = await Promise.all([
+            db2.exec('CREATE TABLE IF NOT EXISTS vehicles (' +
+                'vid INTEGER PRIMARY KEY,' +
+                'name TEXT,' +
+                'type TEXT,' +
+                'num_seats INT,' +
+                'notes TEXT' +
+                ')'),
 
-    db.run('CREATE TABLE IF NOT EXISTS bookings (' +
-        'name TEXT,' +
-        'function TEXT,' +
-        'num_of_people NUMBER,' +
-        'start_time NUMBER,' +
-        'return_time NUMBER,' +
-        'reason TEXT,' +
-        'notes TEXT,' +
-        'vehicle NUMBER)');
+            db2.exec('CREATE TABLE IF NOT EXISTS bookings (' +
+                'name TEXT,' +
+                'function TEXT,' +
+                'num_of_people INTEGER,' +
+                'start_time NUMBER,' +
+                'return_time NUMBER,' +
+                'reason TEXT,' +
+                'notes TEXT,' +
+                'vehicle INTEGER,' +
+                'FOREIGN KEY (vehicle) REFERENCES vehicles(vid))')
+        ]);
+    } catch (err) {
+        console.error(err);
+    }
 
-    console.log('database initilized');
+    console.log('Database Ready!');
 }
 
-function saveVehicle(vehicle) {
+async function saveVehicle(vehicle) {
     if(vehicle.id === undefined) {
-        db.prepare('INSERT INTO vehicles VALUES (?, ?, ?, ?)')
-            .run([vehicle.name, vehicle.type, vehicle.numSeats, vehicle.notes], e => console.log(e));
+        const insert = await Promise.resolve(db2.prepare('INSERT INTO vehicles (name, type, num_seats, notes) VALUES (?, ?, ?, ?)'))
+            .then(stmt => stmt.run([vehicle.name, vehicle.type, vehicle.numSeats, vehicle.notes]));
+
+        return insert.stmt.lastID;
     } else {
-        db.prepare('UPDATE vehicles SET name = ?, type = ?, num_seats = ?, notes = ? WHERE rowid = ?')
-            .run([vehicle.name, vehicle.type, vehicle.numSeats, vehicle.notes, vehicle.id], e => console.log(e));
+        const insert = await Promise.resolve(
+            db2.prepare('UPDATE vehicles SET name = ?, type = ?, num_seats = ?, notes = ? WHERE vid = ?'))
+            .then(stmt => stmt.run([vehicle.name, vehicle.type, vehicle.numSeats, vehicle.notes, vehicle.vid]));
+
+        return vehicle.id;
     }
 }
 
-function saveBooking(booking) {
-    db.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run([booking.name, booking.function, booking.numPeople, booking.startTime, booking.returnTime, booking.reason, booking.notes, 1], () => console.log('Booking saved!'));
+async function saveBooking(booking) {
+    return await Promise.resolve(db2.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?, ?, ?)'))
+        .then(stmt => stmt.run([booking.name, booking.function, booking.numPeople, booking.startTime, booking.returnTime, booking.reason, booking.notes, booking.vehicle.vid]));
 }
 
 class Vehicle {
@@ -210,7 +256,7 @@ class Vehicle {
     }
 
     setId(id) {
-        this.id = id;
+        this.vid = id;
         return this;
     }
 

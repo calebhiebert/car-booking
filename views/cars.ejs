@@ -22,8 +22,8 @@
                 <tbody>
                     <% vehicles.forEach(vehicle => { %>
                         <tr>
-                            <td><a href="/edit_vehicle/<%= vehicle.id %>">Edit</a></td>
-                            <th scope="row"><%= vehicle.id %></th>
+                            <td><a href="/edit_vehicle/<%= vehicle.vid %>">Edit</a></td>
+                            <th scope="row"><%= vehicle.vid %></th>
                             <td><%= vehicle.name %></td>
                             <td><%= vehicle.type %></td>
                             <td><%= vehicle.numSeats %></td>

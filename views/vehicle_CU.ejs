@@ -12,7 +12,7 @@
             <h3>Create Vehicle</h3>
             <form action="/add_vehicle" method="post">
                 <% if(operation == 'edit') { %>
-                    <input name="id" value="<%= input.id %>" type="hidden">
+                    <input name="id" value="<%= input.vid %>" type="hidden">
                 <% } %>
                 <fieldset class="form-group<%= validation.name != undefined ? ' has-danger' : '' %>">
                     <label for="car_name">Vehicle Name</label>
@@ -23,15 +23,15 @@
                 <fieldset class="form-group<%= validation.type != undefined ? ' has-danger' : '' %>">
                     <label for="car_type">Vehicle Type</label>
                     <select id="car_type" name="type" class="form-control">
-                        <option value="car">Car</option>
-                        <option value="van">Van</option>
+                        <option value="car" <%= input.type !== undefined ? input.type == 'car' ? 'selected' : '' : '' %>>Car</option>
+                        <option value="van" <%= input.type !== undefined ? input.type == 'van' ? 'selected' : '' : '' %>>Van</option>
                     </select>
                 </fieldset>
 
                 <fieldset class="form-group<%= validation.numSeats != undefined ? ' has-danger' : '' %>">
                     <label for="car_num_seats">Number of Seats</label>
                     <input id="car_num_seats" name="numSeats" type="number" class="form-control" value="<%= input.numSeats === undefined ? 5 : input.numSeats %>">
-                    <span class="form-control-feedback"><%= validation.car_num_seats %></span>
+                    <span class="form-control-feedback"><%= validation.numSeats %></span>
                 </fieldset>
 
                 <fieldset class="form-group">
@@ -40,7 +40,7 @@
                 </fieldset>
                 <button type="submit" class="btn btn-primary"><%= operation == 'create' ? 'Add Vehicle' : 'Save' %></button>
                 <% if(operation == 'edit') { %>
-                    <a class="btn btn-outline-danger" href="/delete_vehicle/<%= input.id %>">Remove Vehicle</a>
+                    <a class="btn btn-outline-danger" href="/delete_vehicle/<%= input.vid %>">Remove Vehicle</a>
                 <% } %>
             </form>
         </div>

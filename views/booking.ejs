@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Car Booking</title>
+    <% include head.ejs %>
+</head>
+<body>
+<% include nav.ejs %>
+
+<div class="container mt-3">
+    <div class="alert alert-info">At this time bookings that have already been created cannot be changed.</div>
+
+    <div class="card pb-3">
+        <div class="card-block">
+            <h3 class="text-center">Booking</h3>
+        </div>
+            <ul class="list-group list-group-flush justify-content-center">
+                <li class="list-group-item justify-content-between">Pickup Time <b><%= moment(booking.start_time * 1000).format('LLL') %></b></li>
+                <li class="list-group-item justify-content-between">Return Time <b><%= moment(booking.return_time * 1000).format('LLL') %></b></li>
+                <li class="list-group-item justify-content-between">Reason <b><%= booking.reason %></b></li>
+                <li class="list-group-item justify-content-between">Notes <span><%= booking.notes %></span></li>
+            </ul>
+        <div class="row justify-content-around mt-3">
+            <div class="col-md-6 listing">
+                <h4 class="text-center">User</h4>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item justify-content-between">Name <b><%= booking.user.name %></b></li>
+                    <li class="list-group-item justify-content-between">Email <b><%= booking.user.email %></b></li>
+                </ul>
+            </div>
+            <div class="col-md-6 listing">
+                <h4 class="text-center">Vehicle</h4>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item justify-content-between">Name <b><%= booking.vehicle.name %> (ID# <%= booking.vehicle.vid %>)</b></li>
+                    <li class="list-group-item justify-content-between">Type <b><%= booking.vehicle.type %></b></li>
+                    <li class="list-group-item justify-content-between">Seats <b><%= booking.vehicle.numSeats %></b></li>
+                    <li class="list-group-item justify-content-between">Notes <b><%= booking.vehicle.notes %></b></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <% if(sess.user.resource_name === booking.user.resource_name || sess.user.is_admin) { %>
+        <a href="/booking/<%= booking.id %>/cancel" class="btn btn-outline-danger mt-3">Cancel Booking</a>
+    <% } %>
+</div>
+
+<% include scripts.ejs %>
+</body>
+</html>

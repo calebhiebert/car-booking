@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Admin</title>
+    <% include head.ejs %>
+</head>
+<body>
+<% include nav.ejs %>
+
+<div class="container mt-3">
+    <h3>Users</h3>
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Is Admin</th>
+                <th>Options</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% for (let user of users) { %>
+                <tr>
+                    <td><%= user.name %></td>
+                    <td><%= user.email %></td>
+                    <td><%= user.is_admin ? 'true' : 'false'%></td>
+                    <% if(!user.is_admin) { %>
+                        <td>
+                            <a href="/grant_admin?resource=<%= user.resource_name %>">Grant Admin</a>
+                        </td>
+                    <% } else { %>
+                        <td>
+                            <a href="/revoke_admin?resource=<%= user.resource_name %>">Revoke Admin</a>
+                        </td>
+                    <% } %>
+                </tr>
+            <% } %>
+        </tbody>
+    </table>
+</div>
+
+<% include scripts.ejs %>
+</body>
+</html>

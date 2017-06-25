@@ -1,8 +1,8 @@
-<nav class="navbar navbar-toggleable-md navbar-light bg-faded">
+<nav class="navbar navbar-toggleable-md <%= adminPage ? 'navbar-inverse bg-primary' : 'navbar-light bg-faded' %>">
     <button class="navbar-toggler navbar-toggler-right" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
     </button>
-    <a class="navbar-brand" href="/">Car Booking</a>
+    <a class="navbar-brand" href="/">Car Booking<%= adminPage ? ' (Admin) ' : '' %></a>
     <div class="collapse navbar-collapse row" id="navbarNav">
         <div class="col">
             <ul class="navbar-nav">
@@ -16,6 +16,14 @@
                 <% } else { %>
                     <li class="nav-item">
                         <a class="nav-link" id="sign-in" href="#">Sign in with Google</a>
+                    </li>
+                <% } %>
+                <% if (sess.tokens !== undefined && sess.user !== undefined && sess.user.is_admin == 1) { %>
+                    <li class="nav-item">
+                        <a class="nav-link" id="sign-in" href="/admin">Admin</a>
+                    </li>
+                    <li>
+                        <a class="nav-link" href="/vehicles">Manage Vehicles</a>
                     </li>
                 <% } %>
             </ul>

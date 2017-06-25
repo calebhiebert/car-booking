@@ -29,6 +29,10 @@ let oauth2Client = new OAuth2(
     'http://localhost'
 );
 
+google.options({
+    auth: oauth2Client
+});
+
 const mailgunAuth = {
     auth: {
         api_key: MAILGUN_API_KEY,
@@ -64,32 +68,99 @@ app.use(session({
 }));
 
 app.locals = {
-    moment
+    moment,
+    GOOGLE_CLIENT_ID
 };
 
 // authenticate
-app.use((req, res, next) => {
+// make sure user data is cached
+app.use(async (req, res, next) => {
     res.locals.sess = req.session;
-    next();
+
+    if(req.session.tokens !== undefined && req.session.userCache === undefined) {
+        oauth2Client.setCredentials(req.session.tokens);
+
+        // cache name data
+        people.people.get({resourceName: 'people/me', personFields: 'names,emailAddresses'}, async (err, person) => {
+            if(err) {
+                console.log(err);
+                res.send('there was an error! <br/><pre>' + JSON.stringify(err) + '</pre>' );
+            } else {
+                req.session.userCache = {
+                    name: person.names[0].displayName,
+                    resourceName: person.resourceName,
+                    email: person.emailAddresses[0].value
+                };
+
+                const usr = await Promise.resolve(db2.get('SELECT email, name FROM users WHERE resource_name = ? OR email = ?', req.session.userCache.resourceName, req.session.userCache.email));
+
+                if(usr === undefined) {
+                    const res = await Promise.resolve(
+                        db2.prepare('INSERT INTO users (resource_name, email, name, is_admin) VALUES (?, ?, ?, ?)'))
+                        .then(stmt => stmt.run([person.resourceName, person.emailAddresses[0].value, person.names[0].displayName, false]));
+                } else {
+
+                }
+
+                req.session.user = await getUser(req.session.userCache.resourceName);
+
+                next();
+            }
+        });
+    } else if(req.session.tokens !== undefined) {
+        req.session.user = await getUser(req.session.userCache.resourceName);
+        next();
+    } else {
+        next();
+    }
+
+    async function getUser(resourceName) {
+        return await Promise.resolve(db2.get('SELECT resource_name, email, name, is_admin FROM users WHERE resource_name = ?', resourceName));
+    }
 });
 
+// Make sure user is logged in
 app.use((req, res, next) => {
     const nonAuthPaths = ['/', '/authentication'];
+    const adminPaths = ['/admin', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
 
-    if(nonAuthPaths.indexOf(req.path) === -1 && req.session.tokens === undefined)
+    let contains = (arr, value) => {
+        let c = false;
+
+        arr.forEach(e => {
+            if(value.includes(e))
+                c = true;
+        });
+
+        return c;
+    };
+
+    let adminPage = contains(adminPaths, req.path);
+    let signedInPage = !contains(nonAuthPaths, req.path) && !adminPage;
+
+    res.locals.adminPage = adminPage;
+
+    if(signedInPage && req.session.tokens === undefined) {
         res.render('please_sign_in');
-    else
+    } else if (adminPage && !req.session.user.is_admin) {
+        res.render('no_perms');
+    } else {
         next();
+    }
 });
 
 app.get('/', function (req, res) {
-    res.render('index');
+    if(req.session.tokens !== undefined) {
+        res.redirect('/dash');
+    } else {
+        res.render('index');
+    }
 });
 
 app.get('/dash', async (req, res) => {
 
     if(req.session.tokens !== undefined) {
-        const bookings = await Promise.resolve(db2.prepare('SELECT rowid AS id, name, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
+        const bookings = await Promise.resolve(db2.prepare('SELECT bookings.rowid AS id, users.name AS name, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings JOIN users ON bookings.user = users.resource_name WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
             .then(stmt => stmt.all([moment().unix(), moment().unix()]));
 
         for (let booking of bookings) {
@@ -115,10 +186,7 @@ app.get('/no_cars', async (req, res) => {
 
 app.get('/booking_proposal', async (req, res) => {
     if(req.session.proposedBooking === undefined) {
-        res.send('You do not have a booking proposal, please leave');
-    } else if (req.query.email !== undefined) {
-        req.session.email = req.query.email;
-        res.redirect('/accept_booking');
+        res.redirect('/dash');
     } else {
         res.render('booking_proposal', { booking: req.session.proposedBooking });
     }
@@ -127,18 +195,17 @@ app.get('/booking_proposal', async (req, res) => {
 app.get('/accept_booking', async (req, res) => {
     if(req.session.proposedBooking === undefined) {
         res.send('You do not have a booking proposal to accept!');
-    } else if (req.session.email === undefined) {
-        console.log('Missing Email!');
-        res.redirect('/booking_proposal');
     } else {
         let booking = req.session.proposedBooking;
 
         let valid = await Promise.resolve(processBooking(booking));
 
         if(valid.valid) {
+            console.log(booking);
+
             let result = await Promise.resolve(saveBooking(booking));
 
-            sendEmail(booking, req.session.email);
+            //sendEmail(booking, req.session.user.email);
 
             delete req.session.proposedBooking;
             delete req.session.bookingRequest;
@@ -151,10 +218,6 @@ app.get('/accept_booking', async (req, res) => {
 });
 
 app.get('/authentication', async (req, res) => {
-    google.options({
-        auth: oauth2Client
-    });
-
     if(req.session.tokens !== undefined) {
         oauth2Client.setCredentials(req.session.tokens);
         res.redirect('/');
@@ -164,20 +227,7 @@ app.get('/authentication', async (req, res) => {
                 res.send(JSON.stringify(err));
             } else {
                 req.session.tokens = tokens;
-
-                oauth2Client.setCredentials(req.session.tokens);
-
-                // cache name data
-                people.people.get({resourceName: 'people/me', personFields: 'names'}, (err, person) => {
-                    if(err) {
-                        console.log(err);
-                        res.send('there was an error! <br/><pre>' + JSON.stringify(err) + '</pre>' );
-                    } else {
-                        req.session.userCache = {name: person.names[0].displayName, resourceName: person.resourceName };
-                        console.log(req.session.userCache);
-                        res.redirect(req.query.return);
-                    }
-                });
+                res.redirect(req.query.return);
             }
         });
     }
@@ -198,13 +248,13 @@ app.post('/create_booking', async (req, res) => {
     delete req.session.proposedBooking;
 
     let booking = req.session.bookingRequest = req.body;
+    booking.user = req.session.userCache.resourceName;
     
     let validation = basicBookingValidation(booking);
 
     if(validation.valid) {
 
         let result = await Promise.resolve(processBooking(booking));
-        console.log(result);
 
         if (result.valid) {
             req.session.proposedBooking = result.proposedBooking;
@@ -218,53 +268,97 @@ app.post('/create_booking', async (req, res) => {
 });
 
 app.get('/vehicles', async (req, res) => {
-    if(req.session.tokens) {
-        const vehicles = await Promise.resolve(
-            db2.all('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles')
-        );
+    const vehicles = await Promise.resolve(
+        db2.all('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles')
+    );
 
-        res.render('cars', { vehicles });
-    } else {
-        req.session.returnTo = '/vehicles';
-        res.redirect('/auth');
-    }
+    res.render('cars', { vehicles });
 });
 
 app.get('/add_vehicle', (req, res) => {
-    if(req.session.authenticated) {
-        req.session.operation = 'create';
-        res.render('vehicle_CU', {validation: {}, input: {}, operation: 'create'});
-    } else {
-        res.redirect('/auth');
-    }
+    req.session.operation = 'create';
+    res.render('vehicle_CU', {validation: {}, input: {}, operation: 'create'});
 });
 
 app.get('/edit_vehicle/:id', async (req, res) => {
-    if(req.session.authenticated) {
-        req.session.operation = 'edit';
+    req.session.operation = 'edit';
 
-        const vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = $vid'))
-            .then(stmt => stmt.get({$vid: req.params.id}));
+    const vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = $vid'))
+        .then(stmt => stmt.get({$vid: req.params.id}));
 
-        res.render('vehicle_CU', { validation: {}, input: vehicle, operation: req.session.operation});
+    if(vehicle !== undefined) {
+        res.render('vehicle_CU', {validation: {}, input: vehicle, operation: req.session.operation});
     } else {
-        res.redirect('/auth');
+        res.redirect('/');
     }
 });
 
 app.post('/add_vehicle', async (req, res) => {
-    if(req.session.authenticated) {
-        let vehicle = new Vehicle(req.body.name, req.body.type, req.body.numSeats, req.body.notes).setId(req.body.id);
-        let validation = vehicle.validate();
+    let vehicle = new Vehicle(req.body.name, req.body.type, req.body.numSeats, req.body.notes).setId(req.body.id);
+    let validation = vehicle.validate();
 
-        if (validation.valid) {
-            let id = await Promise.resolve(saveVehicle(vehicle));
-            res.redirect('/vehicles');
-        } else {
-            res.render('vehicle_CU', {validation, input: req.body, operation: req.session.operation})
-        }
+    if (validation.valid) {
+        let id = await Promise.resolve(saveVehicle(vehicle));
+        res.redirect('/vehicles');
     } else {
-        res.redirect('/auth');
+        res.render('vehicle_CU', {validation, input: req.body, operation: req.session.operation})
+    }
+});
+
+app.get('/admin', async (req, res) => {
+    const users = await Promise.resolve(db2.all('SELECT resource_name, email, name, is_admin FROM users'));
+
+    res.render('admin', { users });
+});
+
+app.get('/revoke_admin', async (req, res) => {
+    let resource = req.query.resource;
+    const user = await Promise.resolve(db2.get('SELECT resource_name FROM users WHERE resource_name = ?', resource));
+
+    if(user !== undefined) {
+        const res = await Promise.resolve(db2.run('UPDATE users SET is_admin = 0 WHERE resource_name = ?', resource));
+    }
+
+    res.redirect('/admin');
+});
+
+app.get('/grant_admin', async (req, res) => {
+    let resource = req.query.resource;
+    const user = await Promise.resolve(db2.get('SELECT resource_name FROM users WHERE resource_name = ?', resource));
+
+    if(user !== undefined) {
+        const res = await Promise.resolve(db2.run('UPDATE users SET is_admin = 1 WHERE resource_name = ?', resource));
+    }
+
+    res.redirect('/admin');
+});
+
+app.get('/booking/:id', async (req, res) => {
+    const booking = await Promise.resolve(db2.get('SELECT rowid AS id, function, num_of_people, start_time, return_time, reason, notes, user, vehicle FROM bookings WHERE bookings.rowid = ?', req.params.id));
+
+    if(booking !== undefined) {
+        booking.vehicle = await Promise.resolve(db2.get('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?', booking.vehicle));
+        booking.user = await Promise.resolve(db2.get('SELECT resource_name, email, name FROM users WHERE resource_name = ?', booking.user));
+
+        console.log(booking);
+
+        res.render('booking', {booking});
+    } else {
+        res.redirect('/');
+    }
+});
+
+app.get('/booking/:id/cancel', async(req, res) => {
+    const booking = await Promise.resolve(db2.get('SELECT function, num_of_people, start_time, return_time, reason, notes, user, vehicle FROM bookings WHERE bookings.rowid = ?', req.params.id));
+
+    if(booking === undefined) {
+        res.redirect('/');
+    } else {
+        if (req.session.user.is_admin || req.session.user.resource_name === booking.user) {
+            const result = await Promise.resolve(db2.run('DELETE FROM bookings WHERE rowid = ?', req.params.id));
+            console.log(result);
+            res.redirect('/');
+        }
     }
 });
 
@@ -276,22 +370,30 @@ async function initDatabase() {
         const [vErr, bErr] = await Promise.all([
             db2.exec('CREATE TABLE IF NOT EXISTS vehicles (' +
                 'vid INTEGER PRIMARY KEY,' +
-                'name TEXT,' +
-                'type TEXT,' +
-                'num_seats INT,' +
+                'name TEXT NOT NULL,' +
+                'type TEXT NOT NULL,' +
+                'num_seats INT NOT NULL,' +
                 'notes TEXT' +
                 ')'),
 
             db2.exec('CREATE TABLE IF NOT EXISTS bookings (' +
-                'name TEXT,' +
-                'function TEXT,' +
-                'num_of_people INTEGER,' +
-                'start_time NUMBER,' +
-                'return_time NUMBER,' +
-                'reason TEXT,' +
+                'user TEXT NOT NULL,' +
+                'function TEXT NOT NULL,' +
+                'num_of_people INTEGER NOT NULL,' +
+                'start_time NUMBER NOT NULL,' +
+                'return_time NUMBER NOT NULL,' +
+                'reason TEXT NOT NULL,' +
                 'notes TEXT,' +
-                'vehicle INTEGER,' +
-                'FOREIGN KEY (vehicle) REFERENCES vehicles(vid))')
+                'vehicle INTEGER NOT NULL,' +
+                'CONSTRAINT bookings_vehicle_fk FOREIGN KEY (vehicle) REFERENCES vehicles(vid),' +
+                'CONSTRAINT bookings_user_fk FOREIGN KEY (user) REFERENCES users(resource_name))'),
+
+            db2.exec('CREATE TABLE IF NOT EXISTS users (' +
+                'resource_name TEXT PRIMARY KEY,' +
+                'email TEXT NOT NULL,' +
+                'name TEXT NOT NULL,' +
+                'is_admin INT NOT NULL' +
+                ') WITHOUT ROWID;')
         ]);
     } catch (err) {
         console.error(err);
@@ -302,7 +404,7 @@ async function initDatabase() {
 
 // save a vehicle to the database
 async function saveVehicle(vehicle) {
-    if(vehicle.id === undefined) {
+    if(vehicle.vid === undefined) {
         const insert = await Promise.resolve(db2.prepare('INSERT INTO vehicles (name, type, num_seats, notes) VALUES (?, ?, ?, ?)'))
             .then(stmt => stmt.run([vehicle.name, vehicle.type, vehicle.numSeats, vehicle.notes]));
 
@@ -312,22 +414,18 @@ async function saveVehicle(vehicle) {
             db2.prepare('UPDATE vehicles SET name = ?, type = ?, num_seats = ?, notes = ? WHERE vid = ?'))
             .then(stmt => stmt.run([vehicle.name, vehicle.type, vehicle.numSeats, vehicle.notes, vehicle.vid]));
 
-        return vehicle.id;
+        return vehicle.vid;
     }
 }
 
 // save a booking to the database
 async function saveBooking(booking) {
     return await Promise.resolve(db2.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?, ?, ?)'))
-        .then(stmt => stmt.run([booking.name, booking.function, booking.numPeople, booking.unixStartTime, booking.unixReturnTime, booking.reason, booking.notes, booking.vehicle.vid]));
+        .then(stmt => stmt.run([booking.user, booking.function, booking.numPeople, booking.unixStartTime, booking.unixReturnTime, booking.reason, booking.notes, booking.vehicle.vid]));
 }
 
 function basicBookingValidation(booking) {
     validation = { valid: true };
-    
-    nameValid = validateText(booking.name);
-    if(nameValid !== undefined)
-        validation.name = nameValid;
     
     functionValid = validateText(booking.function);
     if(functionValid !== undefined)
@@ -395,7 +493,7 @@ async function processBooking(booking) {
         requestedStart = moment(booking.unixStartTime * 1000);
 
     if(booking.unixReturnTime !== undefined)
-        requestedReturn = moment(booking.unixStartTime * 1000);
+        requestedReturn = moment(booking.unixReturnTime * 1000);
 
     if(booking.startDate !== undefined && booking.startTime !== undefined)
         requestedStart = moment(booking.startDate + ' ' + booking.startTime);
@@ -444,7 +542,7 @@ async function processBooking(booking) {
         //TODO check if something is available with less seats
         return { valid: false };
     } else {
-        let proposedBooking = { name: booking.name, function: booking.function, numPeople: booking.numPeople, unixStartTime: booking.unixStartTime, unixReturnTime: booking.unixReturnTime, reason: booking.reason, notes: booking.notes, vehicle: optimalVehicle };
+        let proposedBooking = { user: booking.user, function: booking.function, numPeople: booking.numPeople, unixStartTime: booking.unixStartTime, unixReturnTime: booking.unixReturnTime, reason: booking.reason, notes: booking.notes, vehicle: optimalVehicle };
 
         return { valid: true, proposedBooking };
     }

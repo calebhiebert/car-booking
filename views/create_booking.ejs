@@ -5,18 +5,13 @@
     <% include head.ejs %>
 </head>
 <body>
+<% include nav.ejs %>
 <div class="container mt-3">
     <div class="card">
         <h3 class="mt-3 ml-3">Booking Request Form</h3>
 
         <div class="card-block">
             <form action="/create_booking" method="post">
-                <fieldset class="form-group<%= validation.name != undefined ? ' has-danger' : '' %>">
-                    <label for="name">What is your name?</label>
-                    <input id="name" name="name" class="form-control" type="text" value="<%= bookingRequest.name %>" required>
-                    <span class="form-control-feedback"><%= validation.name %></span>
-                </fieldset>
-
                 <fieldset class="form-group<%= validation.function != undefined ? ' has-danger' : '' %>">
                     <label for="function">Which function is using this vehicle?</label>
                     <input id="function" name="function" class="form-control" type="text" value="<%= bookingRequest.function %>" required>
@@ -31,13 +26,13 @@
 
                 <fieldset class="form-group<%= validation.startDate != undefined ? ' has-danger' : '' %>">
                     <label for="startDate">Date that you will be needing the vehicle</label>
-                    <input id="startDate" name="startDate" class="form-control" type="date" value="<%= bookingRequest.startDate %>" required>
+                    <input id="startDate" name="startDate" class="form-control" type="date" value="<%= (bookingRequest.startDate || moment().add(1, 'day').format('YYYY-MM-DD'))  %>" required>
                     <span class="form-control-feedback"><%= validation.startDate %></span>
                 </fieldset>
 
                 <fieldset class="form-group<%= validation.returnDate != undefined ? ' has-danger' : '' %>">
                     <label for="returnDate">Return date of the vehicle</label>
-                    <input id="returnDate" name="returnDate" class="form-control" type="date" value="<%= bookingRequest.returnDate %>" required>
+                    <input id="returnDate" name="returnDate" class="form-control" type="date" value="<%= (bookingRequest.returnDate || moment().add(1, 'day').format('YYYY-MM-DD')) %>" required>
                     <span class="form-control-feedback"><%= validation.returnDate %></span>
                 </fieldset>
 

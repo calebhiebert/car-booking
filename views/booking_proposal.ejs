@@ -5,6 +5,7 @@
     <% include head.ejs %>
 </head>
 <body>
+<% include nav.ejs %>
 <div class="container mt-3">
     <div class="card card-inverse card-success" style="color: white;">
         <div class="text-center">
@@ -15,58 +16,49 @@
             <tbody>
                 <tr>
                     <th scope="row">Name</th>
-                    <td><%= booking.name %></td>
+                    <td><%= sess.user.name %></td>
                 </tr>
                 <tr>
                     <th scope="row">Function</th>
-                    <td><%= booking.function %></td>
+                    <td><%= sess.proposedBooking.function %></td>
                 </tr>
                 <tr>
                     <th scope="row"># of People</th>
-                    <td><%= booking.numPeople %></td>
+                    <td><%= sess.proposedBooking.numPeople %></td>
                 </tr>
                 <tr>
                     <th scope="row">Start Time</th>
-                    <td><%= moment(booking.unixStartTime * 1000).format('LLL') %></td>
+                    <td><%= moment(sess.proposedBooking.unixStartTime * 1000).format('LLL') %></td>
                 </tr>
                 <tr>
                     <th scope="row">Return Time</th>
-                    <td><%= moment(booking.unixReturnTime * 1000).format('LLL') %></td>
+                    <td><%= moment(sess.proposedBooking.unixReturnTime * 1000).format('LLL') %></td>
                 </tr>
                 <tr>
                     <th scope="row">Reason</th>
-                    <td><%= booking.reason %></td>
+                    <td><%= sess.proposedBooking.reason %></td>
                 </tr>
-                <% if (booking.notes.length > 0) { %>
+                <% if (sess.proposedBooking.notes.length > 0) { %>
                     <tr>
                         <th scope="row">Notes</th>
-                        <td><%= booking.notes %></td>
+                        <td><%= sess.proposedBooking.notes %></td>
                     </tr>
                 <% } %>
                 <tr>
                     <th scope="row">Vehicle</th>
-                    <td><%= booking.vehicle.name + (' (Vehicle ID: ' + booking.vehicle.vid + ', Seats ' + booking.vehicle.numSeats + ')') %></td>
+                    <td><%= sess.proposedBooking.vehicle.name + (' (Vehicle ID: ' + sess.proposedBooking.vehicle.vid + ', Seats ' + sess.proposedBooking.vehicle.numSeats + ')') %></td>
                 </tr>
-                <% if (booking.vehicle.notes.length > 0) { %>
+                <% if (sess.proposedBooking.vehicle.notes.length > 0) { %>
                     <tr>
                         <th scope="row">Vehicle Notes</th>
-                        <td><%= booking.vehicle.notes %></td>
+                        <td><%= sess.proposedBooking.vehicle.notes %></td>
                     </tr>
                 <% } %>
             </tbody>
         </table>
     </div>
-    <form action="/booking_proposal" method="get">
-        <div class="card mt-3">
-            <div class="card-block">
-                    <fieldset class="form-group">
-                        <label for="email">Please enter your email so we can send you a calendar invite</label>
-                        <input type="email" id="email" name="email" class="form-control" required>
-                    </fieldset>
-            </div>
-        </div>
-        <button type="submit" class="btn btn-primary mt-3">Accept Booking</button>
-    </form>
+    <a class="btn btn-primary mt-3" href="/accept_booking">Accept Booking</a>
+    <a class="btn btn-outline-danger mt-3" href="#">Cancel Booking</a>
 </div>
 <% include scripts.ejs %>
 </body>

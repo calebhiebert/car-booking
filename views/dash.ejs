@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Car Booking</title>
+    <title>Dashboard</title>
     <% include head.ejs %>
 </head>
 <body>
@@ -12,19 +12,19 @@
         <h3 class="text-center mt-3">Upcoming Bookings</h3>
 
         <div class="card-block">
-            <ul class="list-group">
+            <div class="list-group">
                 <% for (booking of bookings) { %>
                     <% if(booking.startTime.isBefore(moment())) { %>
-                        <li class="list-group-item justify-content-between">
+                        <a href="/booking/<%= booking.id %>" class="list-group-item list-group-item-action justify-content-between">
                             <%= booking.name %> (<%= booking.vehicle.name %>) <i class="badge badge-primary">Return at <%= booking.returnTime.format('LT') %> (<%= booking.returnTime.fromNow() %>)</i>
-                        </li>
+                        </a>
                     <% } else { %>
-                        <li class="list-group-item justify-content-between">
+                        <a href="/booking/<%= booking.id %>" class="list-group-item list-group-item-action justify-content-between">
                             <%= booking.name %> (<%= booking.vehicle.name %>) <i class="badge badge-info">Pickup on <%= booking.startTime.format('LLL') %> (<%= booking.startTime.fromNow() %>)</i>
-                        </li>
+                        </a>
                     <% } %>
                 <% } %>
-            </ul>
+            </div>
         </div>
         <div class="card-block">
             <a class="btn btn-primary" href="/create_booking">Create New Booking</a>

@@ -4,7 +4,7 @@ const MAILGUN_API_KEY = 'key-74a852390f4b035e5b486433519d326a';
 const GOOGLE_CLIENT_ID = '801316837381-7d1vd6bi6v3c2do02tdqlis0i5b7dsdi.apps.googleusercontent.com';
 const GOOGLE_CLIENT_SECRET = 'IgJsH0JuizQLXxrrTQEWGU0x';
 const GOOGLE_REDIRECT_URL = 'http://localhost/auth';
-const PROD_REDIRECT_URL = 'https://booker.luigi.piikl.com';
+const PROD_REDIRECT_URL = 'https://booker.luigi.piikl.com/auth';
 
 // Import modules
 const express = require('express');

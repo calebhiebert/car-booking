@@ -18,8 +18,9 @@ const fs = require('fs');
 const ical = require('ical-generator');
 
 const google = require('googleapis');
-const googleAuth = require('google-auth-library');
-const auth = JSON.parse('{"web":{"client_id":"801316837381-r7qmmv7rrhe2elhct4jh1tock5mr2tkd.apps.googleusercontent.com","project_id":"car-booking-171719","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://accounts.google.com/o/oauth2/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"iAcWSPQsMV-_EED7-eDM7-c6"}}');
+const people = google.people('v1');
+
+const googlr = require('./googler');
 
 const mailgunAuth = {
     auth: {
@@ -56,7 +57,7 @@ app.use(session({
 }));
 
 app.get('/', function (req, res) {
-    res.render('index');
+    res.render('index', { sess: req.session });
 });
 
 app.get('/dash', async (req, res) => {
@@ -122,6 +123,41 @@ app.get('/accept_booking', async (req, res) => {
             res.send('You took too long to accept this booking, it is no longer valid!');
         }
     }
+});
+
+app.get('/authentication', async (req, res) => {
+    google.options({
+        auth: googlr.oauth2Client
+    });
+
+    if(req.session.tokens !== undefined) {
+        googlr.oauth2Client.setCredentials(req.session.tokens);
+
+    } else {
+        googlr.getTokens(req.query.code, (err, tokens) => {
+
+            if(err) {
+                res.send(JSON.stringify(err));
+            } else {
+                req.session.tokens = tokens;
+
+                // cache name data
+                people.people.get({resourceName: 'people/me', personFields: 'names'}, (err, person) => {
+                    console.log(err);
+                    console.log(person);
+                });
+
+                res.send('ok');
+            }
+        });
+    }
+});
+
+app.get('/logout', async (req, res) => {
+    delete req.session.tokens;
+    delete req.session.userCache;
+
+    res.redirect('/');
 });
 
 app.get('/auth', (req, res) => {

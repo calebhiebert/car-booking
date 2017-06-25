@@ -1,5 +1,7 @@
 const PORT = 80;
-const SECRET_PASSWORD = 'Welcome123';
+const MAILGUN_API_KEY = 'key-74a852390f4b035e5b486433519d326a';
+const GOOGLE_CLIENT_ID = '801316837381-7d1vd6bi6v3c2do02tdqlis0i5b7dsdi.apps.googleusercontent.com';
+const GOOGLE_CLIENT_SECRET = 'IgJsH0JuizQLXxrrTQEWGU0x';
 
 // Import modules
 const express = require('express');
@@ -18,13 +20,18 @@ const fs = require('fs');
 const ical = require('ical-generator');
 
 const google = require('googleapis');
+const OAuth2 = google.auth.OAuth2;
 const people = google.people('v1');
 
-const googlr = require('./googler');
+let oauth2Client = new OAuth2(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    'http://localhost'
+);
 
 const mailgunAuth = {
     auth: {
-        api_key: "key-74a852390f4b035e5b486433519d326a",
+        api_key: MAILGUN_API_KEY,
         domain: "mail.piikl.com"
     }
 };
@@ -56,35 +63,53 @@ app.use(session({
     cookie: { }
 }));
 
+app.locals = {
+    moment
+};
+
+// authenticate
+app.use((req, res, next) => {
+    res.locals.sess = req.session;
+    next();
+});
+
+app.use((req, res, next) => {
+    const nonAuthPaths = ['/', '/authentication'];
+
+    if(nonAuthPaths.indexOf(req.path) === -1 && req.session.tokens === undefined)
+        res.render('please_sign_in');
+    else
+        next();
+});
+
 app.get('/', function (req, res) {
-    res.render('index', { sess: req.session });
+    res.render('index');
 });
 
 app.get('/dash', async (req, res) => {
 
-    const bookings = await Promise.resolve(db2.prepare('SELECT rowid AS id, name, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
-        .then(stmt => stmt.all([moment().unix(), moment().unix()]));
+    if(req.session.tokens !== undefined) {
+        const bookings = await Promise.resolve(db2.prepare('SELECT rowid AS id, name, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
+            .then(stmt => stmt.all([moment().unix(), moment().unix()]));
 
-    for(let booking of bookings) {
+        for (let booking of bookings) {
 
-        booking.startTime = moment(booking.startTime * 1000);
-        booking.returnTime = moment(booking.returnTime * 1000);
+            booking.startTime = moment(booking.startTime * 1000);
+            booking.returnTime = moment(booking.returnTime * 1000);
 
-        booking.vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?'))
-            .then(stmt => stmt.get([booking.vehicle]));
-        console.log('Loaded vehicle for car ' + booking.id);
+            booking.vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?'))
+                .then(stmt => stmt.get([booking.vehicle]));
+        }
+
+        res.render('dash', {bookings});
     }
-
-    console.log(bookings);
-
-    res.render('dash', { bookings, moment });
 });
 
 app.get('/no_cars', async (req, res) => {
     if(req.session.bookingRequest === undefined) {
         res.send('no booking request exists!');
     } else {
-        res.render('no_cars', { booking: req.session.bookingRequest, moment });
+        res.render('no_cars', { booking: req.session.bookingRequest });
     }
 });
 
@@ -95,7 +120,7 @@ app.get('/booking_proposal', async (req, res) => {
         req.session.email = req.query.email;
         res.redirect('/accept_booking');
     } else {
-        res.render('booking_proposal', { booking: req.session.proposedBooking, moment });
+        res.render('booking_proposal', { booking: req.session.proposedBooking });
     }
 });
 
@@ -127,27 +152,32 @@ app.get('/accept_booking', async (req, res) => {
 
 app.get('/authentication', async (req, res) => {
     google.options({
-        auth: googlr.oauth2Client
+        auth: oauth2Client
     });
 
     if(req.session.tokens !== undefined) {
-        googlr.oauth2Client.setCredentials(req.session.tokens);
-
+        oauth2Client.setCredentials(req.session.tokens);
+        res.redirect('/');
     } else {
-        googlr.getTokens(req.query.code, (err, tokens) => {
-
+        getTokens(req.query.code, (err, tokens) => {
             if(err) {
                 res.send(JSON.stringify(err));
             } else {
                 req.session.tokens = tokens;
 
+                oauth2Client.setCredentials(req.session.tokens);
+
                 // cache name data
                 people.people.get({resourceName: 'people/me', personFields: 'names'}, (err, person) => {
-                    console.log(err);
-                    console.log(person);
+                    if(err) {
+                        console.log(err);
+                        res.send('there was an error! <br/><pre>' + JSON.stringify(err) + '</pre>' );
+                    } else {
+                        req.session.userCache = {name: person.names[0].displayName, resourceName: person.resourceName };
+                        console.log(req.session.userCache);
+                        res.redirect(req.query.return);
+                    }
                 });
-
-                res.send('ok');
             }
         });
     }
@@ -160,30 +190,8 @@ app.get('/logout', async (req, res) => {
     res.redirect('/');
 });
 
-app.get('/auth', (req, res) => {
-    if(req.session.authenticated) {
-        res.redirect('/');
-    } else {
-        res.render('auth', {method: 'get'});
-    }
-});
-
-app.post('/auth', (req, res) => {
-    if(req.body.password === SECRET_PASSWORD) {
-        req.session.authenticated = true;
-
-        if(req.session.returnTo !== undefined)
-            res.redirect(req.session.returnTo);
-        else
-            res.redirect('/');
-    } else {
-        res.render('auth', {authenticated: false, method: 'post'})
-    }
-
-});
-
 app.get('/create_booking', (req, res) => {
-    res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation: {}, moment });
+    res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation: {} });
 });
 
 app.post('/create_booking', async (req, res) => {
@@ -205,12 +213,12 @@ app.post('/create_booking', async (req, res) => {
             res.redirect('/no_cars');
         }
     } else {
-        res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation, moment })
+        res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation })
     }
 });
 
 app.get('/vehicles', async (req, res) => {
-    if(req.session.authenticated) {
+    if(req.session.tokens) {
         const vehicles = await Promise.resolve(
             db2.all('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles')
         );
@@ -481,6 +489,12 @@ function generateCalendar(booking) {
     });
 
     return cal;
+}
+
+function getTokens(code, callback) {
+    oauth2Client.getToken(code, (err, tokens) => {
+        callback(err, tokens);
+    });
 }
 
 class Vehicle {

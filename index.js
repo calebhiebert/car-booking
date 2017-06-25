@@ -1,7 +1,9 @@
 const PORT = 80;
+const TZ = 'America/Winnipeg';
 const MAILGUN_API_KEY = 'key-74a852390f4b035e5b486433519d326a';
 const GOOGLE_CLIENT_ID = '801316837381-7d1vd6bi6v3c2do02tdqlis0i5b7dsdi.apps.googleusercontent.com';
 const GOOGLE_CLIENT_SECRET = 'IgJsH0JuizQLXxrrTQEWGU0x';
+const GOOGLE_REDIRECT_URL = 'http://localhost/auth';
 
 // Import modules
 const express = require('express');
@@ -18,15 +20,17 @@ const nodemailer = require('nodemailer');
 const mg = require('nodemailer-mailgun-transport');
 const fs = require('fs');
 const ical = require('ical-generator');
+const localizer = require('./localizer');
 
 const google = require('googleapis');
 const OAuth2 = google.auth.OAuth2;
 const people = google.people('v1');
+const calendar = google.calendar('v3');
 
 let oauth2Client = new OAuth2(
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
-    'http://localhost'
+    GOOGLE_REDIRECT_URL
 );
 
 google.options({
@@ -41,6 +45,12 @@ const mailgunAuth = {
 };
 
 const mailTransporter = nodemailer.createTransport(mg(mailgunAuth));
+
+localizer.load();
+
+let languages = {
+    english: localizer.lang('english')
+};
 
 // Initialize database 
 Promise.resolve()
@@ -69,7 +79,17 @@ app.use(session({
 
 app.locals = {
     moment,
-    GOOGLE_CLIENT_ID
+    GOOGLE_CLIENT_ID,
+    genAuthUrl() {
+        return oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: [
+                'https://www.googleapis.com/auth/user.emails.read',
+                'https://www.googleapis.com/auth/userinfo.profile',
+                'https://www.googleapis.com/auth/calendar'
+            ]
+        });
+    }
 };
 
 // authenticate
@@ -98,13 +118,12 @@ app.use(async (req, res, next) => {
                     const res = await Promise.resolve(
                         db2.prepare('INSERT INTO users (resource_name, email, name, is_admin) VALUES (?, ?, ?, ?)'))
                         .then(stmt => stmt.run([person.resourceName, person.emailAddresses[0].value, person.names[0].displayName, false]));
+
+                    res.redirect('/request_perms');
                 } else {
-
+                    req.session.user = await getUser(req.session.userCache.resourceName);
+                    next();
                 }
-
-                req.session.user = await getUser(req.session.userCache.resourceName);
-
-                next();
             }
         });
     } else if(req.session.tokens !== undefined) {
@@ -121,7 +140,8 @@ app.use(async (req, res, next) => {
 
 // Make sure user is logged in
 app.use((req, res, next) => {
-    const nonAuthPaths = ['/', '/authentication'];
+    const publicPaths = ['/', '/auth', '/setlang'];
+    const authPaths = ['/dash', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
     const adminPaths = ['/admin', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
 
     let contains = (arr, value) => {
@@ -134,13 +154,30 @@ app.use((req, res, next) => {
 
         return c;
     };
+    let eq = (arr, value) => {
+        let c = false;
 
+        arr.forEach(e => {
+            if(e === value)
+                c = true;
+        });
+
+        return c;
+    };
+
+    if(req.session.language === undefined) {
+        req.session.language = 'english';
+    }
+
+    res.locals.lang = localizer.lang(req.session.language);
+
+    let publicPage = eq(publicPaths, req.path);
+    let authPage = contains(authPaths, req.path) && !publicPage;
     let adminPage = contains(adminPaths, req.path);
-    let signedInPage = !contains(nonAuthPaths, req.path) && !adminPage;
 
     res.locals.adminPage = adminPage;
 
-    if(signedInPage && req.session.tokens === undefined) {
+    if(!publicPage && req.session.tokens === undefined) {
         res.render('please_sign_in');
     } else if (adminPage && !req.session.user.is_admin) {
         res.render('no_perms');
@@ -153,8 +190,44 @@ app.get('/', function (req, res) {
     if(req.session.tokens !== undefined) {
         res.redirect('/dash');
     } else {
-        res.render('index');
+        res.render('index', {authUrl: 'junk'});
     }
+});
+
+app.get('/setlang/:lang', (req, res) => {
+
+    let lang = req.params.lang;
+
+    if(lang !== 'english' || lang !== 'french')
+        lang = 'english';
+
+    req.session.language = req.params.lang;
+
+    let backUrl = req.header('Referer') || '/';
+    res.redirect(backUrl);
+});
+
+app.get('/calendar', async (req, res) => {
+    let calendar = google.calendar('v3');
+
+    oauth2Client.setCredentials(req.session.tokens);
+
+    calendar.events.list({
+        calendarId: 'primary',
+        timeMin: (new Date()).toISOString(),
+        maxResults: 10,
+        singleEvents: true,
+        orderBy: 'startTime'
+    }, (err, response) => {
+        if(err) {
+            console.log(err);
+        } else {
+            console.log(response);
+            let events = response.items;
+        }
+
+        res.send('ok');
+    });
 });
 
 app.get('/dash', async (req, res) => {
@@ -201,11 +274,12 @@ app.get('/accept_booking', async (req, res) => {
         let valid = await Promise.resolve(processBooking(booking));
 
         if(valid.valid) {
-            console.log(booking);
 
             let result = await Promise.resolve(saveBooking(booking));
 
             //sendEmail(booking, req.session.user.email);
+
+            createCalendarEvent(booking, req.session.tokens);
 
             delete req.session.proposedBooking;
             delete req.session.bookingRequest;
@@ -217,9 +291,8 @@ app.get('/accept_booking', async (req, res) => {
     }
 });
 
-app.get('/authentication', async (req, res) => {
+app.get('/auth', async (req, res) => {
     if(req.session.tokens !== undefined) {
-        oauth2Client.setCredentials(req.session.tokens);
         res.redirect('/');
     } else {
         getTokens(req.query.code, (err, tokens) => {
@@ -227,7 +300,7 @@ app.get('/authentication', async (req, res) => {
                 res.send(JSON.stringify(err));
             } else {
                 req.session.tokens = tokens;
-                res.redirect(req.query.return);
+                res.redirect('/');
             }
         });
     }
@@ -340,8 +413,6 @@ app.get('/booking/:id', async (req, res) => {
         booking.vehicle = await Promise.resolve(db2.get('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?', booking.vehicle));
         booking.user = await Promise.resolve(db2.get('SELECT resource_name, email, name FROM users WHERE resource_name = ?', booking.user));
 
-        console.log(booking);
-
         res.render('booking', {booking});
     } else {
         res.redirect('/');
@@ -356,7 +427,9 @@ app.get('/booking/:id/cancel', async(req, res) => {
     } else {
         if (req.session.user.is_admin || req.session.user.resource_name === booking.user) {
             const result = await Promise.resolve(db2.run('DELETE FROM bookings WHERE rowid = ?', req.params.id));
-            console.log(result);
+
+
+
             res.redirect('/');
         }
     }
@@ -416,6 +489,50 @@ async function saveVehicle(vehicle) {
 
         return vehicle.vid;
     }
+}
+
+function cancelCalendarEvent(id, userTokens) {
+    oauth2Client.setCredentials(usertokens);
+
+    calendar.events.get({
+        calendarId: 'primary',
+        eventId: id
+    }, (err, res) => {
+        if(err){
+            console.log(err);
+        } else {
+            console.log()
+        }
+    })
+}
+
+function createCalendarEvent(booking, userTokens) {
+    oauth2Client.setCredentials(userTokens);
+
+    let event = {
+        summary: 'Car Booking',
+        location: 'Parkade',
+        description: 'You have booked ' + booking.vehicle.name,
+        start: {
+            dateTime: moment(booking.unixStartTime * 1000).format(),
+            timeZone: TZ
+        },
+        end: {
+            dateTime: moment(booking.unixReturnTime * 1000).format(),
+            timeZone: TZ
+        }
+    };
+
+    calendar.events.insert({
+        calendarId: 'primary',
+        resource: event
+    }, (err, event) => {
+        if(err) {
+            console.log(err);
+        } else {
+            console.log(event);
+        }
+    });
 }
 
 // save a booking to the database
@@ -524,9 +641,6 @@ async function processBooking(booking) {
 
     const availableVehicles = await Promise.resolve(db2.prepare('SELECT vid, name, num_seats AS numSeats, notes FROM vehicles WHERE vid NOT IN (' + paramsQs + ') ORDER BY num_seats ASC'))
         .then(stmt => stmt.all(busyVehicles));
-
-    console.log(busyVehicles);
-    console.log(availableVehicles);
 
     let optimalVehicle = null;
 

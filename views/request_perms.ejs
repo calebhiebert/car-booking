@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Car Booking</title>
+    <% include head.ejs %>
+</head>
+<body>
+<% include nav.ejs %>
+
+<div class="container mt-3">
+    <div class="card">
+        <div class="card-block text-center">
+            <p class="card-text">It looks like this is your first time using the car booking app!
+            We're going to need some permissions to manage your calendar.</p>
+            <a href="<%= authUrl %>" class="btn btn-outline-info">Grant Permission</a>
+        </div>
+    </div>
+</div>
+<% include scripts.ejs %>
+</body>
+</html>

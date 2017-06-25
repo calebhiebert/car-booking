@@ -9,25 +9,25 @@
 
 <div class="container mt-3">
     <div class="card">
-        <h3 class="text-center mt-3">Upcoming Bookings</h3>
+        <h3 class="text-center mt-3"><%=lang['upcmng_bkks']%></h3>
 
         <div class="card-block">
             <div class="list-group">
                 <% for (booking of bookings) { %>
                     <% if(booking.startTime.isBefore(moment())) { %>
                         <a href="/booking/<%= booking.id %>" class="list-group-item list-group-item-action justify-content-between">
-                            <%= booking.name %> (<%= booking.vehicle.name %>) <i class="badge badge-primary">Return at <%= booking.returnTime.format('LT') %> (<%= booking.returnTime.fromNow() %>)</i>
+                            <%= booking.name %> (<%= booking.vehicle.name %>) <i class="badge badge-primary"><%=lang['rtrn_at']%> <%= booking.returnTime.format('LT') %> (<%= booking.returnTime.fromNow() %>)</i>
                         </a>
                     <% } else { %>
                         <a href="/booking/<%= booking.id %>" class="list-group-item list-group-item-action justify-content-between">
-                            <%= booking.name %> (<%= booking.vehicle.name %>) <i class="badge badge-info">Pickup on <%= booking.startTime.format('LLL') %> (<%= booking.startTime.fromNow() %>)</i>
+                            <%= booking.name %> (<%= booking.vehicle.name %>) <i class="badge badge-info"><%=lang['pckp_on']%> <%= booking.startTime.format('LLL') %> (<%= booking.startTime.fromNow() %>)</i>
                         </a>
                     <% } %>
                 <% } %>
             </div>
         </div>
         <div class="card-block">
-            <a class="btn btn-primary" href="/create_booking">Create New Booking</a>
+            <a class="btn btn-primary" href="/create_booking"><%=lang['crte_nw']%></a>
         </div>
     </div>
 </div>

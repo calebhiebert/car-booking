@@ -26,13 +26,13 @@
 
                 <fieldset class="form-group<%= validation.startDate != undefined ? ' has-danger' : '' %>">
                     <label for="startDate">Date that you will be needing the vehicle</label>
-                    <input id="startDate" name="startDate" class="form-control" type="date" value="<%= (bookingRequest.startDate || moment().add(1, 'day').format('YYYY-MM-DD'))  %>" required>
+                    <input id="startDate" name="startDate" class="form-control" type="date" value="<%= (bookingRequest.startDate || moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD'))  %>" required>
                     <span class="form-control-feedback"><%= validation.startDate %></span>
                 </fieldset>
 
                 <fieldset class="form-group<%= validation.returnDate != undefined ? ' has-danger' : '' %>">
                     <label for="returnDate">Return date of the vehicle</label>
-                    <input id="returnDate" name="returnDate" class="form-control" type="date" value="<%= (bookingRequest.returnDate || moment().add(1, 'day').format('YYYY-MM-DD')) %>" required>
+                    <input id="returnDate" name="returnDate" class="form-control" type="date" value="<%= (bookingRequest.returnDate || moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD')) %>" required>
                     <span class="form-control-feedback"><%= validation.returnDate %></span>
                 </fieldset>
 

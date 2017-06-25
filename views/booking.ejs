@@ -15,8 +15,8 @@
             <h3 class="text-center">Booking</h3>
         </div>
             <ul class="list-group list-group-flush justify-content-center">
-                <li class="list-group-item justify-content-between">Pickup Time <b><%= moment(booking.start_time * 1000).format('LLL') %></b></li>
-                <li class="list-group-item justify-content-between">Return Time <b><%= moment(booking.return_time * 1000).format('LLL') %></b></li>
+                <li class="list-group-item justify-content-between">Pickup Time <b><%= moment(booking.start_time * 1000).tz(TZ).format('LLL') %></b></li>
+                <li class="list-group-item justify-content-between">Return Time <b><%= moment(booking.return_time * 1000).tz(TZ).format('LLL') %></b></li>
                 <li class="list-group-item justify-content-between">Reason <b><%= booking.reason %></b></li>
                 <li class="list-group-item justify-content-between">Notes <span><%= booking.notes %></span></li>
             </ul>
@@ -39,9 +39,12 @@
             </div>
         </div>
     </div>
+    <% if (event.calendarUrl !== undefined) { %>
+        <a href="<%= event.calendarUrl %>" class="btn btn-outline-info mt-2">Calendar</a>
+    <% } %>
 
     <% if(sess.user.resource_name === booking.user.resource_name || sess.user.is_admin) { %>
-        <a href="/booking/<%= booking.id %>/cancel" class="btn btn-outline-danger mt-3">Cancel Booking</a>
+        <a href="/booking/<%= booking.id %>/cancel" class="btn btn-outline-danger mt-2">Cancel Booking</a>
     <% } %>
 </div>
 

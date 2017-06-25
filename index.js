@@ -13,7 +13,7 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const sqstore = require('connect-sqlite3')(session);
-const moment = require('moment');
+const moment = require('moment-timezone');
 const Promise = require('bluebird');
 const db2 = require('sqlite');
 const nodemailer = require('nodemailer');
@@ -80,6 +80,7 @@ app.use(session({
 app.locals = {
     moment,
     GOOGLE_CLIENT_ID,
+    TZ,
     genAuthUrl() {
         return oauth2Client.generateAuthUrl({
             access_type: 'offline',
@@ -238,8 +239,8 @@ app.get('/dash', async (req, res) => {
 
         for (let booking of bookings) {
 
-            booking.startTime = moment(booking.startTime * 1000);
-            booking.returnTime = moment(booking.returnTime * 1000);
+            booking.startTime = moment(booking.startTime * 1000).tz(TZ);
+            booking.returnTime = moment(booking.returnTime * 1000).tz(TZ);
 
             booking.vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?'))
                 .then(stmt => stmt.get([booking.vehicle]));
@@ -276,15 +277,26 @@ app.get('/accept_booking', async (req, res) => {
         if(valid.valid) {
 
             let result = await Promise.resolve(saveBooking(booking));
+            let bookingId = result.stmt.lastID;
+
+            console.log(result);
 
             //sendEmail(booking, req.session.user.email);
 
-            createCalendarEvent(booking, req.session.tokens);
+            createCalendarEvent(booking, req.session.tokens, async (err, cal) => {
+                if(err) {
+                    console.log(err);
+                } else {
 
-            delete req.session.proposedBooking;
-            delete req.session.bookingRequest;
+                    let r = await Promise.resolve(db2.run('UPDATE bookings SET calendarId = ? WHERE rowid = ?', cal.id, bookingId));
+                    console.log(r);
+                }
 
-            res.redirect('/dash');
+                delete req.session.proposedBooking;
+                delete req.session.bookingRequest;
+
+                res.redirect('/dash');
+            });
         } else {
             res.send('You took too long to accept this booking, it is no longer valid!');
         }
@@ -407,20 +419,28 @@ app.get('/grant_admin', async (req, res) => {
 });
 
 app.get('/booking/:id', async (req, res) => {
-    const booking = await Promise.resolve(db2.get('SELECT rowid AS id, function, num_of_people, start_time, return_time, reason, notes, user, vehicle FROM bookings WHERE bookings.rowid = ?', req.params.id));
+    const booking = await Promise.resolve(db2.get('SELECT rowid AS id, function, num_of_people, start_time, return_time, reason, notes, user, vehicle, calendarId FROM bookings WHERE bookings.rowid = ?', req.params.id));
 
     if(booking !== undefined) {
         booking.vehicle = await Promise.resolve(db2.get('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?', booking.vehicle));
         booking.user = await Promise.resolve(db2.get('SELECT resource_name, email, name FROM users WHERE resource_name = ?', booking.user));
 
-        res.render('booking', {booking});
+        getCalendarEvent(booking.calendarId, req.session.tokens, (err, cal) => {
+            if(err) {
+                console.log(err);
+                res.render('booking', { booking, event: {} });
+            } else {
+                console.log(cal);
+                res.render('booking', { booking, event: { calendarUrl: cal.htmlLink }} );
+            }
+        });
     } else {
         res.redirect('/');
     }
 });
 
 app.get('/booking/:id/cancel', async(req, res) => {
-    const booking = await Promise.resolve(db2.get('SELECT function, num_of_people, start_time, return_time, reason, notes, user, vehicle FROM bookings WHERE bookings.rowid = ?', req.params.id));
+    const booking = await Promise.resolve(db2.get('SELECT function, num_of_people, start_time, return_time, reason, notes, user, vehicle, calendarId FROM bookings WHERE bookings.rowid = ?', req.params.id));
 
     if(booking === undefined) {
         res.redirect('/');
@@ -428,14 +448,17 @@ app.get('/booking/:id/cancel', async(req, res) => {
         if (req.session.user.is_admin || req.session.user.resource_name === booking.user) {
             const result = await Promise.resolve(db2.run('DELETE FROM bookings WHERE rowid = ?', req.params.id));
 
+            cancelCalendarEvent(booking.calendarId, req.session.tokens, (err, cal) => {
+                if(err)
+                    console.log(err);
 
-
-            res.redirect('/');
+                res.redirect('/');
+            });
         }
     }
 });
 
-app.listen(PORT, () => console.log('server running on port ') + PORT);
+app.listen(PORT, () => console.log('server running on port ' + PORT));
 
 // create tables
 async function initDatabase() {
@@ -458,6 +481,7 @@ async function initDatabase() {
                 'reason TEXT NOT NULL,' +
                 'notes TEXT,' +
                 'vehicle INTEGER NOT NULL,' +
+                'calendarId TEXT,' +
                 'CONSTRAINT bookings_vehicle_fk FOREIGN KEY (vehicle) REFERENCES vehicles(vid),' +
                 'CONSTRAINT bookings_user_fk FOREIGN KEY (user) REFERENCES users(resource_name))'),
 
@@ -491,22 +515,25 @@ async function saveVehicle(vehicle) {
     }
 }
 
-function cancelCalendarEvent(id, userTokens) {
-    oauth2Client.setCredentials(usertokens);
+function cancelCalendarEvent(id, userTokens, callback) {
+    oauth2Client.setCredentials(userTokens);
+
+    calendar.events.delete({
+        calendarId: 'primary',
+        eventId: id
+    }, callback)
+}
+
+function getCalendarEvent(id, userTokens, callback) {
+    oauth2Client.setCredentials(userTokens);
 
     calendar.events.get({
         calendarId: 'primary',
         eventId: id
-    }, (err, res) => {
-        if(err){
-            console.log(err);
-        } else {
-            console.log()
-        }
-    })
+    }, callback)
 }
 
-function createCalendarEvent(booking, userTokens) {
+function createCalendarEvent(booking, userTokens, callback) {
     oauth2Client.setCredentials(userTokens);
 
     let event = {
@@ -528,17 +555,17 @@ function createCalendarEvent(booking, userTokens) {
         resource: event
     }, (err, event) => {
         if(err) {
-            console.log(err);
+            callback(err);
         } else {
-            console.log(event);
+            callback(null, event);
         }
     });
 }
 
 // save a booking to the database
 async function saveBooking(booking) {
-    return await Promise.resolve(db2.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?, ?, ?)'))
-        .then(stmt => stmt.run([booking.user, booking.function, booking.numPeople, booking.unixStartTime, booking.unixReturnTime, booking.reason, booking.notes, booking.vehicle.vid]));
+    return await Promise.resolve(db2.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'))
+        .then(stmt => stmt.run([booking.user, booking.function, booking.numPeople, booking.unixStartTime, booking.unixReturnTime, booking.reason, booking.notes, booking.vehicle.vid, null]));
 }
 
 function basicBookingValidation(booking) {

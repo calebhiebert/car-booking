@@ -4,6 +4,7 @@ const MAILGUN_API_KEY = 'key-74a852390f4b035e5b486433519d326a';
 const GOOGLE_CLIENT_ID = '801316837381-7d1vd6bi6v3c2do02tdqlis0i5b7dsdi.apps.googleusercontent.com';
 const GOOGLE_CLIENT_SECRET = 'IgJsH0JuizQLXxrrTQEWGU0x';
 const GOOGLE_REDIRECT_URL = 'http://localhost/auth';
+const PROD_REDIRECT_URL = 'https://booker.luigi.piikl.com';
 
 // Import modules
 const express = require('express');
@@ -27,10 +28,12 @@ const OAuth2 = google.auth.OAuth2;
 const people = google.people('v1');
 const calendar = google.calendar('v3');
 
+let prod = process.argv[2] === 'prod';
+
 let oauth2Client = new OAuth2(
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
-    GOOGLE_REDIRECT_URL
+    prod ? PROD_REDIRECT_URL : GOOGLE_REDIRECT_URL
 );
 
 google.options({
@@ -191,7 +194,7 @@ app.get('/', function (req, res) {
     if(req.session.tokens !== undefined) {
         res.redirect('/dash');
     } else {
-        res.render('index', {authUrl: 'junk'});
+        res.render('index');
     }
 });
 
@@ -303,7 +306,7 @@ app.get('/accept_booking', async (req, res) => {
     }
 });
 
-app.get('/auth', async (req, res) => {
+app.get('/auth', (req, res) => {
     if(req.session.tokens !== undefined) {
         res.redirect('/');
     } else {

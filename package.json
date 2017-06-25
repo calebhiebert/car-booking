@@ -4,8 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "run": "node index.js",
-    "car-booking": "node index.js"
+    "start": "node index.js"
   },
   "author": "",
   "license": "ISC",

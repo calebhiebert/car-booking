@@ -474,7 +474,8 @@ app.get('/booking/:id/cancel', async(req, res) => {
                 if(err)
                     console.log(err);
 
-                console.log('[User %s sucessfully cancelled their booking for %s]', req.session.user.name, moment.tz(booking.start_time).format('LLL'));
+                console.log('[User %s sucessfully cancelled their booking for %s]',
+                    req.session.user.name, moment.tz(booking.start_time, TZ).format('LLL'));
 
                 res.redirect('/');
             });

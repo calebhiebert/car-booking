@@ -23,6 +23,8 @@ const fs = require('fs');
 const ical = require('ical-generator');
 const localizer = require('./localizer');
 
+const forms = require('forms');
+
 const google = require('googleapis');
 const OAuth2 = google.auth.OAuth2;
 const people = google.people('v1');
@@ -50,10 +52,6 @@ const mailgunAuth = {
 const mailTransporter = nodemailer.createTransport(mg(mailgunAuth));
 
 localizer.load();
-
-let languages = {
-    english: localizer.lang('english')
-};
 
 // Initialize database 
 Promise.resolve()
@@ -144,7 +142,7 @@ app.use(async (req, res, next) => {
 
 // Make sure user is logged in
 app.use((req, res, next) => {
-    const publicPaths = ['/', '/auth', '/setlang'];
+    const publicPaths = ['/', '/auth', '/setlang', '/form'];
     const authPaths = ['/dash', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
     const adminPaths = ['/admin', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
 
@@ -198,6 +196,31 @@ app.get('/', function (req, res) {
     }
 });
 
+let fields = forms.fields;
+let validators = forms.validators;
+let widgets = forms.widgets;
+let frm = forms.create({
+    username: fields.string({required: true}),
+    password: fields.password({required: validators.required('You definitely want a password')}),
+    email: fields.email()
+});
+
+app.get('/form', async (req, res) => {
+
+    res.render('frm', { formHtml: frm.toHTML() });
+});
+
+app.post('/form', async (req, res) => {
+    frm.handle(req, {
+        success() {
+            console.log('success!');
+        },
+        other(form) {
+            res.render('frm', { formHtml: form.toHTML() })
+        }
+    })
+});
+
 app.get('/setlang/:lang', (req, res) => {
 
     let lang = req.params.lang;
@@ -235,10 +258,9 @@ app.get('/calendar', async (req, res) => {
 });
 
 app.get('/dash', async (req, res) => {
-
     if(req.session.tokens !== undefined) {
         const bookings = await Promise.resolve(db2.prepare('SELECT bookings.rowid AS id, users.name AS name, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings JOIN users ON bookings.user = users.resource_name WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
-            .then(stmt => stmt.all([moment().unix(), moment().unix()]));
+            .then(stmt => stmt.all([moment().tz(TZ).unix(), moment().tz(TZ).unix()]));
 
         for (let booking of bookings) {
 
@@ -341,7 +363,6 @@ app.post('/create_booking', async (req, res) => {
     let validation = basicBookingValidation(booking);
 
     if(validation.valid) {
-
         let result = await Promise.resolve(processBooking(booking));
 
         if (result.valid) {
@@ -544,11 +565,11 @@ function createCalendarEvent(booking, userTokens, callback) {
         location: 'Parkade',
         description: 'You have booked ' + booking.vehicle.name,
         start: {
-            dateTime: moment(booking.unixStartTime * 1000).format(),
+            dateTime: moment.tz(booking.unixStartTime * 1000, TZ).format(),
             timeZone: TZ
         },
         end: {
-            dateTime: moment(booking.unixReturnTime * 1000).format(),
+            dateTime: moment.tz(booking.unixReturnTime * 1000, TZ).format(),
             timeZone: TZ
         }
     };
@@ -599,10 +620,10 @@ function basicBookingValidation(booking) {
         validation.returnTime = returnTimeValid;
 
     if(startDateValid === undefined && returnDateValid === undefined && startTimeValid === undefined && returnTimeValid === undefined) {
-        let startTime = moment(booking.startDate + ' ' + booking.startTime);
-        let returnTime = moment(booking.returnDate + ' ' + booking.returnTime);
+        let startTime = moment.tz(booking.startDate + ' ' + booking.startTime, TZ);
+        let returnTime = moment.tz(booking.returnDate + ' ' + booking.returnTime, TZ);
 
-        let now = moment();
+        let now = moment().tz(TZ);
 
         if(startTime.isSameOrBefore(now, 'minutes')) {
             validation.startDate = 'The date cannot be in the past';
@@ -637,16 +658,16 @@ async function processBooking(booking) {
     let requestedReturn;
 
     if(booking.unixStartTime !== undefined)
-        requestedStart = moment(booking.unixStartTime * 1000);
+        requestedStart = moment.tz(booking.unixStartTime * 1000, TZ);
 
     if(booking.unixReturnTime !== undefined)
-        requestedReturn = moment(booking.unixReturnTime * 1000);
+        requestedReturn = moment.tz(booking.unixReturnTime * 1000, TZ);
 
     if(booking.startDate !== undefined && booking.startTime !== undefined)
-        requestedStart = moment(booking.startDate + ' ' + booking.startTime);
+        requestedStart = moment.tz(booking.startDate + ' ' + booking.startTime, TZ);
 
     if(booking.returnDate !== undefined && booking.returnTime !== undefined)
-        requestedReturn = moment(booking.returnDate + ' ' + booking.returnTime);
+        requestedReturn = moment.tz(booking.returnDate + ' ' + booking.returnTime, TZ);
 
     booking.unixStartTime = requestedStart.unix();
     booking.unixReturnTime = requestedReturn.unix();
@@ -656,8 +677,8 @@ async function processBooking(booking) {
     let busyVehicles = [];
 
     for (let booking of bookings) {
-        let bookingStart = moment(booking.start_time * 1000);
-        let bookingReturn = moment(booking.return_time * 1000);
+        let bookingStart = moment.tz(booking.start_time * 1000, TZ);
+        let bookingReturn = moment.tz(booking.return_time * 1000, TZ);
 
         if(requestedStart.isBetween(bookingStart, bookingReturn, null, '(]') || bookingStart.isBetween(requestedStart, requestedReturn, null, '[]')) {
             busyVehicles.push(booking.vehicle);

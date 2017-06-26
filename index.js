@@ -23,23 +23,20 @@ const mg = require('nodemailer-mailgun-transport');
 const fs = require('fs');
 const ical = require('ical-generator');
 const localizer = require('./localizer');
+const goog = require('./googlestuff');
+
+let prod = process.argv[2] === 'prod';
+
+goog.init(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, prod ? PROD_REDIRECT_URL : GOOGLE_REDIRECT_URL);
+let oauth2Client = goog.oauth2Client;
+
+//TODO make a module to deal with email stuff
+//const mail = require('./mailer');
 
 const google = require('googleapis');
 const OAuth2 = google.auth.OAuth2;
 const people = google.people('v1');
 const calendar = google.calendar('v3');
-
-let prod = process.argv[2] === 'prod';
-
-let oauth2Client = new OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    prod ? PROD_REDIRECT_URL : GOOGLE_REDIRECT_URL
-);
-
-google.options({
-    auth: oauth2Client
-});
 
 const mailgunAuth = {
     auth: {
@@ -74,66 +71,73 @@ app.locals = {
     moment,
     GOOGLE_CLIENT_ID,
     TZ,
-    genAuthUrl() {
-        return oauth2Client.generateAuthUrl({
-            access_type: 'offline',
-            scope: [
-                'https://www.googleapis.com/auth/user.emails.read',
-                'https://www.googleapis.com/auth/userinfo.profile',
-                'https://www.googleapis.com/auth/calendar'
-            ]
-        });
-    }
+    genAuthUrl: goog.genAuthUrl
 };
 
-// authenticate
-// make sure user data is cached
 app.use(async (req, res, next) => {
     res.locals.sess = req.session;
+    res.locals.lang = localizer.lang(req.session.language);
+    next();
+});
 
+app.use(async (req, res, next) => {
     if(req.session.tokens !== undefined && req.session.userCache === undefined) {
-        oauth2Client.setCredentials(req.session.tokens);
+        const me = await Promise.resolve(goog.people.getMe(req.session.tokens));
 
-        // cache name data
-        people.people.get({resourceName: 'people/me', personFields: 'names,emailAddresses'}, async (err, person) => {
-            if(err) {
-                console.log(err);
-                res.send('there was an error! <br/><pre>' + JSON.stringify(err) + '</pre>' );
-            } else {
-                req.session.userCache = {
-                    name: person.names[0].displayName,
-                    resourceName: person.resourceName,
-                    email: person.emailAddresses[0].value
-                };
+        req.session.userCache = {
+            name: me.names[0].displayName,
+            resourceName: me.resourceName,
+            email: me.emailAddresses[0].value
+        };
+    }
 
-                const usr = await Promise.resolve(db2.get('SELECT email, name FROM users WHERE resource_name = ? OR email = ?', req.session.userCache.resourceName, req.session.userCache.email));
+    next();
+});
 
-                if(usr === undefined) {
-                    const res = await Promise.resolve(
-                        db2.prepare('INSERT INTO users (resource_name, email, name, is_admin) VALUES (?, ?, ?, ?)'))
-                        .then(stmt => stmt.run([person.resourceName, person.emailAddresses[0].value, person.names[0].displayName, false]));
+app.use(async (req, res, next) => {
+    if(req.session.tokens) {
+        const usr = await Promise.resolve(db2.get('SELECT email, name, resource_name FROM users WHERE resource_name = ? OR email = ?',
+            req.session.userCache.resourceName, req.session.userCache.email));
 
-                    console.log('[User %s (%s) logged in for the first time]',
-                        person.names[0].displayName, person.emailAddresses[0].value);
+        if (usr === undefined) {
+            const usr = req.session.userCache;
+            const res = await Promise.resolve(
+                db2.prepare('INSERT INTO users (resource_name, email, name, is_admin) VALUES (?, ?, ?, ?)'))
+                .then(stmt => stmt.run([usr.resourceName, usr.email, usr.name, false]));
 
-                    next();
-                } else {
-                    req.session.user = await getUser(req.session.userCache.resourceName);
-                    next();
-                }
-            }
-        });
-    } else if(req.session.tokens !== undefined) {
-        req.session.user = await getUser(req.session.userCache.resourceName);
+            console.log('[User %s (%s) logged in for the first time]',
+                usr.name, usr.email);
+        }
+
+        req.session.user = await Promise.resolve(db2.get('SELECT resource_name, email, name, is_admin FROM users WHERE resource_name = ?', usr.resource_name));
+
         next();
     } else {
         next();
     }
+});
 
-    async function getUser(resourceName) {
-        return await Promise.resolve(db2.get('SELECT resource_name, email, name, is_admin FROM users WHERE resource_name = ?', resourceName));
+app.use(async (req, res, next) => {
+    if(req.session.tokens === undefined) {
+        delete req.session.user;
+        delete req.session.userCache;
+    }
+
+    next();
+});
+
+app.use(async (req, res, next) => {
+    const adminPaths = ['/admin', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
+    const path = req.path;
+
+    if(elementStartsWith(adminPaths, path) && req.session.tokens && req.user.is_admin) {
+        next();
+    } else {
+        res.render('no_perms');
     }
 });
+
+//TODO check for sign in pages
 
 // Make sure user is logged in
 app.use((req, res, next) => {
@@ -141,16 +145,7 @@ app.use((req, res, next) => {
     const authPaths = ['/dash', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
     const adminPaths = ['/admin', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
 
-    let contains = (arr, value) => {
-        let c = false;
 
-        arr.forEach(e => {
-            if(value.includes(e))
-                c = true;
-        });
-
-        return c;
-    };
     let eq = (arr, value) => {
         let c = false;
 
@@ -166,7 +161,7 @@ app.use((req, res, next) => {
         req.session.language = 'english';
     }
 
-    res.locals.lang = localizer.lang(req.session.language);
+
 
     let publicPage = eq(publicPaths, req.path);
     let authPage = contains(authPaths, req.path) && !publicPage;
@@ -862,4 +857,26 @@ function validateTime(value, nullErr = 'This field must not be blank') {
         return nullErr;
     else if (!timeRegex.test(value))
         return 'Must be a valid time';
+}
+
+function contains(arr, value) {
+    let c = false;
+
+    arr.forEach(e => {
+        if(e.includes(value))
+            c = true;
+    });
+
+    return c;
+}
+
+function elementStartsWith(arr, value) {
+    let esw = false;
+
+    arr.forEach(ele => {
+        if(value.startsWith(ele))
+            esw = true;
+    });
+
+    return esw;
 }

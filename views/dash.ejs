@@ -6,12 +6,15 @@
 </head>
 <body>
 <% include nav.ejs %>
-
 <div class="container mt-3">
     <div class="card">
-        <h3 class="text-center mt-3"><%=lang['upcmng_bkks']%></h3>
-
+        <h3 class="card-header text-center"><%=lang['upcmng_bkks']%></h3>
         <div class="card-block">
+            <% if(bookings.length === 0) { %>
+                <div class="text-center">
+                    <i class="text-muted"><%=lang['nothing_here']%></i>
+                </div>
+            <% } %>
             <div class="list-group">
                 <% for (booking of bookings) { %>
                     <% if(booking.startTime.isBefore(moment().tz(TZ))) { %>
@@ -26,10 +29,8 @@
                 <% } %>
             </div>
         </div>
-        <div class="card-block">
-            <a class="btn btn-primary" href="/create_booking"><%=lang['crte_nw']%></a>
-        </div>
     </div>
+    <a class="btn btn-outline-primary mt-2" href="/create_booking"><%=lang['crte_nw']%></a>
 </div>
 <% include scripts.ejs %>
 </body>

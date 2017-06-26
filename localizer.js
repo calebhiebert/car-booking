@@ -24,7 +24,14 @@ module.exports = {
                 resolve(dict);
 
             } catch (err) {
-                reject();
+                switch (err.code) {
+                    case 'ENOENT':
+                        reject('[There was an error while loading locales. Failed Object: %s]'.replace('%s', err.path));
+                        break;
+                    default:
+                        reject('[Encountered an unknown error while loading locales. Code: %s]'.replace('%s', err.code));
+                        break;
+                }
             }
         });
     },

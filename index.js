@@ -50,15 +50,6 @@ const mailgunAuth = {
 
 const mailTransporter = nodemailer.createTransport(mg(mailgunAuth));
 
-// Load lacales
-Promise.resolve(localizer.load()).then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length));
-
-Promise.resolve()
-    .then(() => db2.open('./cars.db', { Promise }))
-    .then(() => initDatabase())
-    .then(() => console.log('[Database initialized]'))
-    .catch(err => console.error(err));
-
 // set settings
 app.set('view engine', 'ejs');
 app.set('trust proxy', 1);
@@ -467,15 +458,27 @@ app.get('/booking/:id/cancel', async(req, res) => {
     if(booking === undefined) {
         res.redirect('/');
     } else {
+        const bookingName = await Promise.resolve(db2.get('SELECT name, email FROM users WHERE resource_name = ?', booking.user));
+
         if (req.session.user.is_admin || req.session.user.resource_name === booking.user) {
             const result = await Promise.resolve(db2.run('DELETE FROM bookings WHERE rowid = ?', req.params.id));
 
             cancelCalendarEvent(booking.calendarId, req.session.tokens, (err, cal) => {
-                if(err)
-                    console.log(err);
+                if(err) {
+                    switch (err.code) {
+                        case 410:
+                            console.log('[Tried to delete the calendar entry for %s\'s booking, but it was already deleted]',
+                                bookingName.name);
+                            break;
+                        default:
+                            console.log('[Encountered an unexpected error (code %s) while trying to delete a calendar event]', err.code);
+                            break;
+                    }
+                }
 
-                console.log('[User %s sucessfully cancelled their booking for %s]',
-                    req.session.user.name, moment.tz(booking.start_time, TZ).format('LLL'));
+                console.log('[User %s (%s) sucessfully removed %s\'s (%s) booking for %s]',
+                    req.session.user.name, req.session.user.email, bookingName.name,
+                    bookingName.email, moment.tz(booking.start_time, TZ).format('LLL'));
 
                 res.redirect('/');
             });
@@ -483,7 +486,16 @@ app.get('/booking/:id/cancel', async(req, res) => {
     }
 });
 
-app.listen(PORT, () => console.log('[Server started on port %s]', PORT));
+/**
+ * BEGIN APP INITIALIZATION
+ */
+Promise.resolve()
+    .then(() => db2.open('./cars.db', { Promise }))
+    .then(() => initDatabase()).then(() => console.log('[Database initialized]'))
+    .then(() => localizer.load())
+    .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
+    .then(() => app.listen(PORT, () => console.log('[Server started on port %s]', PORT)))
+    .catch(err => console.log(err));
 
 // create tables
 async function initDatabase() {

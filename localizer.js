@@ -15,11 +15,18 @@ let dict = {};
 
 module.exports = {
     load() {
-        for (locale of locales) {
-            dict[locale.lang] = JSON.parse(fs.readFileSync(locale.file, {encoding: 'utf-8'}));
-        }
+        return new Promise((resolve, reject) => {
+            try {
+                for (locale of locales) {
+                    dict[locale.lang] = JSON.parse(fs.readFileSync(locale.file, {encoding: 'utf-8'}));
+                }
 
-        console.log('Loaded ' + locales.length + ' locales');
+                resolve(dict);
+
+            } catch (err) {
+                reject();
+            }
+        });
     },
     lang(lang) {
         return dict[lang].phrases;

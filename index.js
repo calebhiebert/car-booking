@@ -1,6 +1,7 @@
 const PORT = 80;
 const TZ = 'America/Winnipeg';
 const MAILGUN_API_KEY = 'key-74a852390f4b035e5b486433519d326a';
+const MAILGUN_DOMAIN = 'mail.piikl.com';
 const GOOGLE_CLIENT_ID = '801316837381-7d1vd6bi6v3c2do02tdqlis0i5b7dsdi.apps.googleusercontent.com';
 const GOOGLE_CLIENT_SECRET = 'IgJsH0JuizQLXxrrTQEWGU0x';
 const GOOGLE_REDIRECT_URL = 'http://localhost/auth';
@@ -23,8 +24,6 @@ const fs = require('fs');
 const ical = require('ical-generator');
 const localizer = require('./localizer');
 
-const forms = require('forms');
-
 const google = require('googleapis');
 const OAuth2 = google.auth.OAuth2;
 const people = google.people('v1');
@@ -45,19 +44,20 @@ google.options({
 const mailgunAuth = {
     auth: {
         api_key: MAILGUN_API_KEY,
-        domain: "mail.piikl.com"
+        domain: MAILGUN_DOMAIN
     }
 };
 
 const mailTransporter = nodemailer.createTransport(mg(mailgunAuth));
 
-localizer.load();
+// Load lacales
+Promise.resolve(localizer.load()).then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length));
 
-// Initialize database 
 Promise.resolve()
     .then(() => db2.open('./cars.db', { Promise }))
-    .catch(err => console.error(err))
-    .finally(() => initDatabase());
+    .then(() => initDatabase())
+    .then(() => console.log('[Database initialized]'))
+    .catch(err => console.error(err));
 
 // set settings
 app.set('view engine', 'ejs');
@@ -78,6 +78,7 @@ app.use(session({
     cookie: { }
 }));
 
+// all of these variables will be available in the templates
 app.locals = {
     moment,
     GOOGLE_CLIENT_ID,
@@ -121,7 +122,10 @@ app.use(async (req, res, next) => {
                         db2.prepare('INSERT INTO users (resource_name, email, name, is_admin) VALUES (?, ?, ?, ?)'))
                         .then(stmt => stmt.run([person.resourceName, person.emailAddresses[0].value, person.names[0].displayName, false]));
 
-                    res.redirect('/request_perms');
+                    console.log('[User %s (%s) logged in for the first time]',
+                        person.names[0].displayName, person.emailAddresses[0].value);
+
+                    next();
                 } else {
                     req.session.user = await getUser(req.session.userCache.resourceName);
                     next();
@@ -196,20 +200,6 @@ app.get('/', function (req, res) {
     }
 });
 
-let fields = forms.fields;
-let validators = forms.validators;
-let widgets = forms.widgets;
-let frm = forms.create({
-    username: fields.string({required: true}),
-    password: fields.password({required: validators.required('You definitely want a password')}),
-    email: fields.email()
-});
-
-app.get('/form', async (req, res) => {
-
-    res.render('frm', { formHtml: frm.toHTML() });
-});
-
 app.post('/form', async (req, res) => {
     frm.handle(req, {
         success() {
@@ -264,8 +254,8 @@ app.get('/dash', async (req, res) => {
 
         for (let booking of bookings) {
 
-            booking.startTime = moment(booking.startTime * 1000).tz(TZ);
-            booking.returnTime = moment(booking.returnTime * 1000).tz(TZ);
+            booking.startTime = moment(booking.startTime).tz(TZ);
+            booking.returnTime = moment(booking.returnTime).tz(TZ);
 
             booking.vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?'))
                 .then(stmt => stmt.get([booking.vehicle]));
@@ -304,21 +294,24 @@ app.get('/accept_booking', async (req, res) => {
             let result = await Promise.resolve(saveBooking(booking));
             let bookingId = result.stmt.lastID;
 
-            console.log(result);
-
             //sendEmail(booking, req.session.user.email);
 
             createCalendarEvent(booking, req.session.tokens, async (err, cal) => {
                 if(err) {
                     console.log(err);
                 } else {
-
                     let r = await Promise.resolve(db2.run('UPDATE bookings SET calendarId = ? WHERE rowid = ?', cal.id, bookingId));
-                    console.log(r);
+
+                    console.log('[Successfully added booking for %s to their calendar. id %s]',
+                        req.session.user.email, cal.id)
                 }
 
                 delete req.session.proposedBooking;
                 delete req.session.bookingRequest;
+
+                console.log('[User %s (%s) Created a booking for %s from %s to %s]',
+                    req.session.user.name, req.session.user.email,
+                    booking.vehicle.name, booking.pickup, booking.return);
 
                 res.redirect('/dash');
             });
@@ -422,10 +415,13 @@ app.get('/admin', async (req, res) => {
 
 app.get('/revoke_admin', async (req, res) => {
     let resource = req.query.resource;
-    const user = await Promise.resolve(db2.get('SELECT resource_name FROM users WHERE resource_name = ?', resource));
+    const user = await Promise.resolve(db2.get('SELECT resource_name, name, email FROM users WHERE resource_name = ?', resource));
 
     if(user !== undefined) {
         const res = await Promise.resolve(db2.run('UPDATE users SET is_admin = 0 WHERE resource_name = ?', resource));
+
+        console.log('[%s revoked admin access for %s (%s)]',
+            req.session.user.name, user.name, user.email);
     }
 
     res.redirect('/admin');
@@ -433,10 +429,13 @@ app.get('/revoke_admin', async (req, res) => {
 
 app.get('/grant_admin', async (req, res) => {
     let resource = req.query.resource;
-    const user = await Promise.resolve(db2.get('SELECT resource_name FROM users WHERE resource_name = ?', resource));
+    const user = await Promise.resolve(db2.get('SELECT resource_name, name, email FROM users WHERE resource_name = ?', resource));
 
     if(user !== undefined) {
         const res = await Promise.resolve(db2.run('UPDATE users SET is_admin = 1 WHERE resource_name = ?', resource));
+
+        console.log('[%s granted admin access to %s (%s)]',
+            req.session.user.name, user.name, user.email);
     }
 
     res.redirect('/admin');
@@ -454,7 +453,6 @@ app.get('/booking/:id', async (req, res) => {
                 console.log(err);
                 res.render('booking', { booking, event: {} });
             } else {
-                console.log(cal);
                 res.render('booking', { booking, event: { calendarUrl: cal.htmlLink }} );
             }
         });
@@ -476,51 +474,55 @@ app.get('/booking/:id/cancel', async(req, res) => {
                 if(err)
                     console.log(err);
 
+                console.log('[User %s sucessfully cancelled their booking for %s]', req.session.user.name, moment.tz(booking.start_time).format('LLL'));
+
                 res.redirect('/');
             });
         }
     }
 });
 
-app.listen(PORT, () => console.log('server running on port ' + PORT));
+app.listen(PORT, () => console.log('[Server started on port %s]', PORT));
 
 // create tables
 async function initDatabase() {
-    try {
-        const [vErr, bErr] = await Promise.all([
-            db2.exec('CREATE TABLE IF NOT EXISTS vehicles (' +
-                'vid INTEGER PRIMARY KEY,' +
-                'name TEXT NOT NULL,' +
-                'type TEXT NOT NULL,' +
-                'num_seats INT NOT NULL,' +
-                'notes TEXT' +
-                ')'),
+    return new Promise(async (resolve, reject) => {
+        try {
+            const [vErr, bErr] = await Promise.all([
+                db2.exec('CREATE TABLE IF NOT EXISTS vehicles (' +
+                    'vid INTEGER PRIMARY KEY,' +
+                    'name TEXT NOT NULL,' +
+                    'type TEXT NOT NULL,' +
+                    'num_seats INT NOT NULL,' +
+                    'notes TEXT' +
+                    ')'),
 
-            db2.exec('CREATE TABLE IF NOT EXISTS bookings (' +
-                'user TEXT NOT NULL,' +
-                'function TEXT NOT NULL,' +
-                'num_of_people INTEGER NOT NULL,' +
-                'start_time NUMBER NOT NULL,' +
-                'return_time NUMBER NOT NULL,' +
-                'reason TEXT NOT NULL,' +
-                'notes TEXT,' +
-                'vehicle INTEGER NOT NULL,' +
-                'calendarId TEXT,' +
-                'CONSTRAINT bookings_vehicle_fk FOREIGN KEY (vehicle) REFERENCES vehicles(vid),' +
-                'CONSTRAINT bookings_user_fk FOREIGN KEY (user) REFERENCES users(resource_name))'),
+                db2.exec('CREATE TABLE IF NOT EXISTS bookings (' +
+                    'user TEXT NOT NULL,' +
+                    'function TEXT NOT NULL,' +
+                    'num_of_people INTEGER NOT NULL,' +
+                    'start_time TEXT NOT NULL,' +
+                    'return_time TEXT NOT NULL,' +
+                    'reason TEXT NOT NULL,' +
+                    'notes TEXT,' +
+                    'vehicle INTEGER NOT NULL,' +
+                    'calendarId TEXT,' +
+                    'CONSTRAINT bookings_vehicle_fk FOREIGN KEY (vehicle) REFERENCES vehicles(vid),' +
+                    'CONSTRAINT bookings_user_fk FOREIGN KEY (user) REFERENCES users(resource_name))'),
 
-            db2.exec('CREATE TABLE IF NOT EXISTS users (' +
-                'resource_name TEXT PRIMARY KEY,' +
-                'email TEXT NOT NULL,' +
-                'name TEXT NOT NULL,' +
-                'is_admin INT NOT NULL' +
-                ') WITHOUT ROWID;')
-        ]);
-    } catch (err) {
-        console.error(err);
-    }
+                db2.exec('CREATE TABLE IF NOT EXISTS users (' +
+                    'resource_name TEXT PRIMARY KEY,' +
+                    'email TEXT NOT NULL,' +
+                    'name TEXT NOT NULL,' +
+                    'is_admin INT NOT NULL' +
+                    ') WITHOUT ROWID;')
+            ]);
+        } catch (err) {
+            reject(err);
+        }
 
-    console.log('Database Ready!');
+        resolve();
+    });
 }
 
 // save a vehicle to the database
@@ -565,11 +567,11 @@ function createCalendarEvent(booking, userTokens, callback) {
         location: 'Parkade',
         description: 'You have booked ' + booking.vehicle.name,
         start: {
-            dateTime: moment.tz(booking.unixStartTime * 1000, TZ).format(),
+            dateTime: moment.tz(booking.pickup, TZ).format(),
             timeZone: TZ
         },
         end: {
-            dateTime: moment.tz(booking.unixReturnTime * 1000, TZ).format(),
+            dateTime: moment.tz(booking.return, TZ).format(),
             timeZone: TZ
         }
     };
@@ -589,7 +591,7 @@ function createCalendarEvent(booking, userTokens, callback) {
 // save a booking to the database
 async function saveBooking(booking) {
     return await Promise.resolve(db2.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'))
-        .then(stmt => stmt.run([booking.user, booking.function, booking.numPeople, booking.unixStartTime, booking.unixReturnTime, booking.reason, booking.notes, booking.vehicle.vid, null]));
+        .then(stmt => stmt.run([booking.user, booking.function, booking.numPeople, booking.pickup, booking.return, booking.reason, booking.notes, booking.vehicle.vid, null]));
 }
 
 function basicBookingValidation(booking) {
@@ -657,11 +659,11 @@ async function processBooking(booking) {
     let requestedStart;
     let requestedReturn;
 
-    if(booking.unixStartTime !== undefined)
-        requestedStart = moment.tz(booking.unixStartTime * 1000, TZ);
+    if(booking.pickup !== undefined)
+        requestedStart = moment.tz(booking.pickup, TZ);
 
-    if(booking.unixReturnTime !== undefined)
-        requestedReturn = moment.tz(booking.unixReturnTime * 1000, TZ);
+    if(booking.return !== undefined)
+        requestedReturn = moment.tz(booking.return, TZ);
 
     if(booking.startDate !== undefined && booking.startTime !== undefined)
         requestedStart = moment.tz(booking.startDate + ' ' + booking.startTime, TZ);
@@ -669,16 +671,16 @@ async function processBooking(booking) {
     if(booking.returnDate !== undefined && booking.returnTime !== undefined)
         requestedReturn = moment.tz(booking.returnDate + ' ' + booking.returnTime, TZ);
 
-    booking.unixStartTime = requestedStart.unix();
-    booking.unixReturnTime = requestedReturn.unix();
+    booking.pickup = requestedStart.format();
+    booking.return = requestedReturn.format();
 
     const bookings = await Promise.resolve(db2.all('SELECT * FROM bookings'));
 
     let busyVehicles = [];
 
     for (let booking of bookings) {
-        let bookingStart = moment.tz(booking.start_time * 1000, TZ);
-        let bookingReturn = moment.tz(booking.return_time * 1000, TZ);
+        let bookingStart = moment.tz(booking.start_time, TZ);
+        let bookingReturn = moment.tz(booking.return_time, TZ);
 
         if(requestedStart.isBetween(bookingStart, bookingReturn, null, '(]') || bookingStart.isBetween(requestedStart, requestedReturn, null, '[]')) {
             busyVehicles.push(booking.vehicle);
@@ -707,7 +709,7 @@ async function processBooking(booking) {
         //TODO check if something is available with less seats
         return { valid: false };
     } else {
-        let proposedBooking = { user: booking.user, function: booking.function, numPeople: booking.numPeople, unixStartTime: booking.unixStartTime, unixReturnTime: booking.unixReturnTime, reason: booking.reason, notes: booking.notes, vehicle: optimalVehicle };
+        let proposedBooking = { user: booking.user, function: booking.function, numPeople: booking.numPeople, pickup: booking.pickup, return: booking.return, reason: booking.reason, notes: booking.notes, vehicle: optimalVehicle };
 
         return { valid: true, proposedBooking };
     }

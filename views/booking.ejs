@@ -15,8 +15,8 @@
             <h3 class="text-center">Booking</h3>
         </div>
             <ul class="list-group list-group-flush justify-content-center">
-                <li class="list-group-item justify-content-between">Pickup Time <b><%= moment(booking.start_time * 1000).tz(TZ).format('LLL') %></b></li>
-                <li class="list-group-item justify-content-between">Return Time <b><%= moment(booking.return_time * 1000).tz(TZ).format('LLL') %></b></li>
+                <li class="list-group-item justify-content-between">Pickup Time <b><%= moment(booking.start_time).tz(TZ).format('LLL') %></b></li>
+                <li class="list-group-item justify-content-between">Return Time <b><%= moment(booking.return_time).tz(TZ).format('LLL') %></b></li>
                 <li class="list-group-item justify-content-between">Reason <b><%= booking.reason %></b></li>
                 <li class="list-group-item justify-content-between">Notes <span><%= booking.notes %></span></li>
             </ul>

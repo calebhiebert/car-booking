@@ -11,7 +11,7 @@
         <div class="text-center">
             <h1>Uh Oh!</h1>
             <strong>:(</strong>
-            <p>There are no vehicles available between <%= moment(booking.unixStartTime * 1000).format('LLL') %> and <%= moment(booking.unixReturnTime * 1000).format('LLL') %></p>
+            <p>There are no vehicles available between <%= moment.tz(booking.pickup, TZ).format('LLL') %> and <%= moment.tz(booking.return, TZ).format('LLL') %></p>
         </div>
     </div>
     <a class="btn btn-primary mt-3" href="/create_booking">Revise Booking</a>

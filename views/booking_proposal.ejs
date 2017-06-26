@@ -28,11 +28,11 @@
                 </tr>
                 <tr>
                     <th scope="row">Start Time</th>
-                    <td><%= moment(sess.proposedBooking.unixStartTime * 1000).tz(TZ).format('LLL') %></td>
+                    <td><%= moment(sess.proposedBooking.pickup).tz(TZ).format('LLL') %></td>
                 </tr>
                 <tr>
                     <th scope="row">Return Time</th>
-                    <td><%= moment(sess.proposedBooking.unixReturnTime * 1000).tz(TZ).format('LLL') %></td>
+                    <td><%= moment(sess.proposedBooking.return).tz(TZ).format('LLL') %></td>
                 </tr>
                 <tr>
                     <th scope="row">Reason</th>

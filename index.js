@@ -239,21 +239,23 @@ app.get('/calendar', async (req, res) => {
 });
 
 app.get('/dash', async (req, res) => {
-    if(req.session.tokens !== undefined) {
-        const bookings = await Promise.resolve(db2.prepare('SELECT bookings.rowid AS id, users.name AS name, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings JOIN users ON bookings.user = users.resource_name WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
-            .then(stmt => stmt.all([moment().tz(TZ).unix(), moment().tz(TZ).unix()]));
+    const bookings = await Promise.resolve(db2.prepare('SELECT bookings.rowid AS id, users.name AS name, users.email AS email, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings JOIN users ON bookings.user = users.resource_name WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
+        .then(stmt => stmt.all([moment().tz(TZ).unix(), moment().tz(TZ).unix()]));
 
-        for (let booking of bookings) {
+    let visData = [];
 
-            booking.startTime = moment(booking.startTime).tz(TZ);
-            booking.returnTime = moment(booking.returnTime).tz(TZ);
+    for (let booking of bookings) {
 
-            booking.vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?'))
-                .then(stmt => stmt.get([booking.vehicle]));
-        }
+        booking.startTime = moment(booking.startTime).tz(TZ);
+        booking.returnTime = moment(booking.returnTime).tz(TZ);
 
-        res.render('dash', {bookings});
+        booking.vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?'))
+            .then(stmt => stmt.get([booking.vehicle]));
+
+        visData.push({id: booking.id, start: booking.startTime, end: booking.returnTime, content: (booking.name + ' (' + booking.email + ') with ' + booking.vehicle.name)})
     }
+
+    res.render('dash', {bookings, visData});
 });
 
 app.get('/no_cars', async (req, res) => {
@@ -494,7 +496,8 @@ Promise.resolve()
     .then(() => initDatabase()).then(() => console.log('[Database initialized]'))
     .then(() => localizer.load())
     .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
-    .then(() => app.listen(PORT, () => console.log('[Server started on port %s]', PORT)))
+    .then(() => startServer())
+    .then(() => console.log('[Server started on port %s]', PORT))
     .catch(err => console.log(err));
 
 // create tables
@@ -535,6 +538,22 @@ async function initDatabase() {
         }
 
         resolve();
+    });
+}
+
+function startServer() {
+    return new Promise((resolve, reject) => {
+        try {
+            app.listen(PORT, (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        } catch (err) {
+            reject(err);
+        }
     });
 }
 

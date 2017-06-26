@@ -3,10 +3,12 @@
 <head>
     <title>Dashboard</title>
     <% include head.ejs %>
+    <link rel="stylesheet" href="/vis.min.css">
 </head>
 <body>
 <% include nav.ejs %>
 <div class="container mt-3">
+    <div class="card mb-3" id="vis"></div>
     <div class="card">
         <h3 class="card-header text-center"><%=lang['upcmng_bkks']%></h3>
         <div class="card-block">
@@ -33,5 +35,23 @@
     <a class="btn btn-outline-primary mt-2" href="/create_booking"><%=lang['crte_nw']%></a>
 </div>
 <% include scripts.ejs %>
+<script src="/vis.min.js"></script>
+<script id="data-json" type="application/json"><%- JSON.stringify(visData) %></script>
+<script>
+    let container = document.getElementById('vis');
+    let items = new vis.DataSet();
+    let options = {
+        editable: false
+    };
+
+    let data = JSON.parse(document.getElementById('data-json').innerText);
+
+    let timeline = new vis.Timeline(container, data, {});
+
+    items.clear();
+    items.add(data);
+
+//    timeline.fit();
+</script>
 </body>
 </html>

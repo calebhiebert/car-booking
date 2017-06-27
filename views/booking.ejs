@@ -44,7 +44,7 @@
     <% } %>
 
     <% if(sess.user.resource_name === booking.user.resource_name || sess.user.is_admin) { %>
-        <a href="/booking/<%= booking.id %>/cancel" class="btn btn-outline-danger mt-2">Cancel Booking</a>
+        <a href="/booking/<%= booking.id %>/cancel" target="_tab" class="btn btn-outline-danger mt-2">Cancel Booking</a>
     <% } %>
 </div>
 

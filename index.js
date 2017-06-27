@@ -426,14 +426,18 @@ app.get('/booking/:id', async (req, res) => {
         booking.vehicle = await Promise.resolve(db2.get('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?', booking.vehicle));
         booking.user = await Promise.resolve(db2.get('SELECT resource_name, email, name FROM users WHERE resource_name = ?', booking.user));
 
-        getCalendarEvent(booking.calendarId, req.session.tokens, (err, cal) => {
-            if(err) {
-                console.log(err);
-                res.render('booking', { booking, event: {} });
-            } else {
-                res.render('booking', { booking, event: { calendarUrl: cal.htmlLink }} );
-            }
-        });
+        try {
+            const cal = await Promise.resolve(goog.calendar.getCalendarEvent({
+                calendarId: 'primary',
+                eventId: booking.calendarId
+            }, req.session.tokens));
+
+            res.render('booking', { booking, event: { calendarUrl: cal.htmlLink } })
+
+        } catch (err) {
+            console.log(err);
+            res.render('booking', { booking, event: { } });
+        }
     } else {
         res.redirect('/');
     }
@@ -448,27 +452,26 @@ app.get('/booking/:id/cancel', async(req, res) => {
         const bookingName = await Promise.resolve(db2.get('SELECT name, email FROM users WHERE resource_name = ?', booking.user));
 
         if (req.session.user.is_admin || req.session.user.resource_name === booking.user) {
-            const result = await Promise.resolve(db2.run('DELETE FROM bookings WHERE rowid = ?', req.params.id));
-
-            cancelCalendarEvent(booking.calendarId, req.session.tokens, (err, cal) => {
-                if(err) {
-                    switch (err.code) {
-                        case 410:
-                            console.log('[Tried to delete the calendar entry for %s\'s booking, but it was already deleted]',
-                                bookingName.name);
-                            break;
-                        default:
-                            console.log('[Encountered an unexpected error (code %s) while trying to delete a calendar event]', err.code);
-                            break;
-                    }
+            try {
+                const dbDelete = await Promise.resolve(db2.run('DELETE FROM bookings WHERE rowid = ?', req.params.id));
+                const caDelete = await Promise.resolve(goog.calendar.deleteCalendarEvent({
+                    calendarId: 'primary',
+                    eventId: id
+                }));
+            } catch (err) {
+                if(err.code !== undefined && err.code === 410) {
+                    console.log('[Tried to delete the calendar entry for %s\'s booking, but it was already deleted]',
+                        bookingName.name);
+                } else {
+                    console.log('[Encountered an unexpected error (code %s) while trying to delete a calendar event]', err.code);
                 }
+            }
 
-                console.log('[User %s (%s) sucessfully removed %s\'s (%s) booking for %s]',
-                    req.session.user.name, req.session.user.email, bookingName.name,
-                    bookingName.email, moment.tz(booking.start_time, TZ).format('LLL'));
+            console.log('[User %s (%s) removed %s\'s (%s) booking for %s]',
+                req.session.user.name, req.session.user.email, bookingName.name,
+                bookingName.email, moment.tz(booking.start_time, TZ).format('LLL'));
 
-                res.redirect('/');
-            });
+            res.redirect('/');
         }
     }
 });
@@ -558,17 +561,9 @@ async function saveVehicle(vehicle) {
     }
 }
 
-function cancelCalendarEvent(id, userTokens, callback) {
-    oauth2Client.setCredentials(userTokens);
+async function getCalendarEvent(id, userToken, callback) {
 
-    calendar.events.delete({
-        calendarId: 'primary',
-        eventId: id
-    }, callback)
-}
 
-function getCalendarEvent(id, userTokens, callback) {
-    oauth2Client.setCredentials(userTokens);
 
     calendar.events.get({
         calendarId: 'primary',

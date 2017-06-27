@@ -15,6 +15,10 @@ module.exports = {
     getToken,
     people: {
         getMe
+    },
+    calendar: {
+        deleteCalendarEvent,
+        getCalendarEvent
     }
 };
 
@@ -56,13 +60,13 @@ function getToken(code) {
     });
 }
 
-function getMe(tokens) {
+function getMe(token) {
     return new Promise((resolve, reject) => {
 
-        if(tokens === undefined) {
-            reject('Tokens missing from getMe request!');
+        if(token === undefined) {
+            reject('Token missing from getMe request!');
         } else {
-            oauth2Client.setCredentials(tokens);
+            oauth2Client.setCredentials(token);
 
             people.people.get({
                 resourceName: 'people/me', personFields: 'names,emailAddresses'
@@ -74,4 +78,38 @@ function getMe(tokens) {
             });
         }
     });
+}
+
+function deleteCalendarEvent(options, token) {
+    return new Promise((resolve, reject) => {
+        if(token === undefined) {
+            reject('Token missing from calendar delete request!');
+        } else {
+            oauth2Client.setCredentials(token);
+
+            calendar.events.delete(options, (err, result) => {
+                if(err)
+                    reject(err);
+                else
+                    resolve(result);
+            });
+        }
+    });
+}
+
+function getCalendarEvent(options, token) {
+    return new Promise((resolve, reject) => {
+        if(token === undefined) {
+            reject('Token missing from calendar get request!');
+        } else {
+            oauth2Client.setCredentials(token);
+
+            calendar.events.get(options, (err, results) => {
+                if(err)
+                    reject(err);
+                else
+                    resolve(results);
+            });
+        }
+    })
 }

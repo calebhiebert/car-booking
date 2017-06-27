@@ -75,6 +75,10 @@ app.locals = {
 };
 
 app.use(async (req, res, next) => {
+
+    if(req.session.language === undefined)
+        req.session.language = 'english';
+
     res.locals.sess = req.session;
     res.locals.lang = localizer.lang(req.session.language);
     next();
@@ -82,13 +86,17 @@ app.use(async (req, res, next) => {
 
 app.use(async (req, res, next) => {
     if(req.session.tokens !== undefined && req.session.userCache === undefined) {
-        const me = await Promise.resolve(goog.people.getMe(req.session.tokens));
+        try {
+            const me = await Promise.resolve(goog.people.getMe(req.session.tokens));
 
-        req.session.userCache = {
-            name: me.names[0].displayName,
-            resourceName: me.resourceName,
-            email: me.emailAddresses[0].value
-        };
+            req.session.userCache = {
+                name: me.names[0].displayName,
+                resourceName: me.resourceName,
+                email: me.emailAddresses[0].value
+            };
+        } catch (err) {
+            wipeTokens(req.session);
+        }
     }
 
     next();
@@ -121,65 +129,51 @@ app.use(async (req, res, next) => {
     if(req.session.tokens === undefined) {
         delete req.session.user;
         delete req.session.userCache;
+        req.session.signedIn = false;
+    } else {
+        req.session.signedIn = true;
     }
 
     next();
 });
 
+// Check admin paths
 app.use(async (req, res, next) => {
     const adminPaths = ['/admin', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
     const path = req.path;
 
-    if(elementStartsWith(adminPaths, path) && req.session.tokens && req.user.is_admin) {
-        next();
+    let isAdminPath = elementStartsWith(adminPaths, path);
+    res.locals.adminPage = isAdminPath;
+
+    if(isAdminPath) {
+        if(req.session.signedIn && req.user.is_admin)
+            next();
+        else
+            res.render('no_perms');
     } else {
-        res.render('no_perms');
+        next();
     }
 });
 
-//TODO check for sign in pages
+// Check Authed Pages
+app.use(async (req, res, next) => {
+    const authedPaths = ['/dash', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
+    const path = req.path;
 
-// Make sure user is logged in
-app.use((req, res, next) => {
-    const publicPaths = ['/', '/auth', '/setlang', '/form'];
-    const authPaths = ['/dash', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
-    const adminPaths = ['/admin', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
+    let isAuthedPath = elementStartsWith(authedPaths, path);
 
-
-    let eq = (arr, value) => {
-        let c = false;
-
-        arr.forEach(e => {
-            if(e === value)
-                c = true;
-        });
-
-        return c;
-    };
-
-    if(req.session.language === undefined) {
-        req.session.language = 'english';
-    }
-
-
-
-    let publicPage = eq(publicPaths, req.path);
-    let authPage = contains(authPaths, req.path) && !publicPage;
-    let adminPage = contains(adminPaths, req.path);
-
-    res.locals.adminPage = adminPage;
-
-    if(!publicPage && req.session.tokens === undefined) {
-        res.render('please_sign_in');
-    } else if (adminPage && !req.session.user.is_admin) {
-        res.render('no_perms');
+    if(isAuthedPath) {
+        if(req.session.signedIn)
+            next();
+        else
+            res.render('please_sign_in');
     } else {
         next();
     }
 });
 
 app.get('/', function (req, res) {
-    if(req.session.tokens !== undefined) {
+    if(req.session.signedIn) {
         res.redirect('/dash');
     } else {
         res.render('index');
@@ -309,18 +303,14 @@ app.get('/accept_booking', async (req, res) => {
     }
 });
 
-app.get('/auth', (req, res) => {
-    if(req.session.tokens !== undefined) {
+app.get('/auth', async (req, res) => {
+    if(req.session.signedIn) {
         res.redirect('/');
     } else {
-        getTokens(req.query.code, (err, tokens) => {
-            if(err) {
-                res.send(JSON.stringify(err));
-            } else {
-                req.session.tokens = tokens;
-                res.redirect('/');
-            }
-        });
+        Promise.resolve(goog.getToken(req.query.code))
+            .then(token => req.session.tokens = token)
+            .catch(err => console.log('[Something went wrong while getting a user token]'))
+            .finally(() => res.redirect('/'));
     }
 });
 
@@ -783,12 +773,6 @@ function generateCalendar(booking) {
     return cal;
 }
 
-function getTokens(code, callback) {
-    oauth2Client.getToken(code, (err, tokens) => {
-        callback(err, tokens);
-    });
-}
-
 class Vehicle {
     constructor(name, type, numSeats, notes) {
         this.name = name;
@@ -868,6 +852,11 @@ function contains(arr, value) {
     });
 
     return c;
+}
+
+function wipeTokens(session) {
+    console.log('[Wiping tokens for a user due to an unknown error]');
+    delete session.tokens;
 }
 
 function elementStartsWith(arr, value) {

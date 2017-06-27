@@ -12,6 +12,7 @@ module.exports = {
     init,
     oauth2Client,
     genAuthUrl,
+    getToken,
     people: {
         getMe
     }
@@ -22,7 +23,7 @@ function init(clientId, clientSecret, redirectUrl) {
     CLIENT_SECRET = clientSecret;
     REDIRECT_URL = redirectUrl;
 
-    let oauth2Client = new OAuth2(
+    oauth2Client = new OAuth2(
         CLIENT_ID, CLIENT_SECRET, REDIRECT_URL
     );
 
@@ -41,6 +42,17 @@ function genAuthUrl() {
             'https://www.googleapis.com/auth/userinfo.profile',
             'https://www.googleapis.com/auth/calendar'
         ]
+    });
+}
+
+function getToken(code) {
+    return new Promise((resolve, reject) => {
+        oauth2Client.getToken(code, (err, tokens) => {
+            if(err)
+                reject(err);
+            else
+                resolve(tokens);
+        });
     });
 }
 

@@ -18,7 +18,8 @@ module.exports = {
     },
     calendar: {
         deleteCalendarEvent,
-        getCalendarEvent
+        getCalendarEvent,
+        createCalendarEvent
     }
 };
 
@@ -62,7 +63,6 @@ function getToken(code) {
 
 function getMe(token) {
     return new Promise((resolve, reject) => {
-
         if(token === undefined) {
             reject('Token missing from getMe request!');
         } else {
@@ -78,6 +78,23 @@ function getMe(token) {
             });
         }
     });
+}
+
+function createCalendarEvent(options, token) {
+    return new Promise((resolve, reject) => {
+        if(token === undefined) {
+            reject('Token missing from calendar create request!');
+        } else {
+            oauth2Client.setCredentials(token);
+
+            calendar.events.insert(options, (err, result) => {
+                if(err)
+                    reject(err);
+                else
+                    resolve(result);
+            });
+        }
+    })
 }
 
 function deleteCalendarEvent(options, token) {

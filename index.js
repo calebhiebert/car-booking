@@ -24,6 +24,7 @@ const fs = require('fs');
 const ical = require('ical-generator');
 const localizer = require('./localizer');
 const goog = require('./googlestuff');
+const crud = require('./crud');
 
 let prod = process.argv[2] === 'prod';
 
@@ -32,11 +33,6 @@ let oauth2Client = goog.oauth2Client;
 
 //TODO make a module to deal with email stuff
 //const mail = require('./mailer');
-
-const google = require('googleapis');
-const OAuth2 = google.auth.OAuth2;
-const people = google.people('v1');
-const calendar = google.calendar('v3');
 
 const mailgunAuth = {
     auth: {
@@ -104,14 +100,11 @@ app.use(async (req, res, next) => {
 
 app.use(async (req, res, next) => {
     if(req.session.tokens) {
-        const usr = await Promise.resolve(db2.get('SELECT email, name, resource_name FROM users WHERE resource_name = ? OR email = ?',
-            req.session.userCache.resourceName, req.session.userCache.email));
+        const usr = crud.user.find(req.session.userCache.resourceName, req.session.userCache.email);
 
         if (usr === undefined) {
             const usr = req.session.userCache;
-            const res = await Promise.resolve(
-                db2.prepare('INSERT INTO users (resource_name, email, name, is_admin) VALUES (?, ?, ?, ?)'))
-                .then(stmt => stmt.run([usr.resourceName, usr.email, usr.name, false]));
+            const res = crud.user.create(usr.resourceName, usr.name, usr.email, false);
 
             console.log('[User %s (%s) logged in for the first time]',
                 usr.name, usr.email);
@@ -146,7 +139,7 @@ app.use(async (req, res, next) => {
     res.locals.adminPage = isAdminPath;
 
     if(isAdminPath) {
-        if(req.session.signedIn && req.user.is_admin)
+        if(req.session.signedIn && req.session.user.is_admin)
             next();
         else
             res.render('no_perms');
@@ -204,29 +197,6 @@ app.get('/setlang/:lang', (req, res) => {
     res.redirect(backUrl);
 });
 
-app.get('/calendar', async (req, res) => {
-    let calendar = google.calendar('v3');
-
-    oauth2Client.setCredentials(req.session.tokens);
-
-    calendar.events.list({
-        calendarId: 'primary',
-        timeMin: (new Date()).toISOString(),
-        maxResults: 10,
-        singleEvents: true,
-        orderBy: 'startTime'
-    }, (err, response) => {
-        if(err) {
-            console.log(err);
-        } else {
-            console.log(response);
-            let events = response.items;
-        }
-
-        res.send('ok');
-    });
-});
-
 app.get('/dash', async (req, res) => {
     const bookings = await Promise.resolve(db2.prepare('SELECT bookings.rowid AS id, users.name AS name, users.email AS email, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings JOIN users ON bookings.user = users.resource_name WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
         .then(stmt => stmt.all([moment().tz(TZ).unix(), moment().tz(TZ).unix()]));
@@ -278,25 +248,22 @@ app.get('/accept_booking', async (req, res) => {
 
             //sendEmail(booking, req.session.user.email);
 
-            createCalendarEvent(booking, req.session.tokens, async (err, cal) => {
-                if(err) {
-                    console.log(err);
-                } else {
-                    let r = await Promise.resolve(db2.run('UPDATE bookings SET calendarId = ? WHERE rowid = ?', cal.id, bookingId));
+            const cal = await createCalendarEvent(booking, req.session.tokens);
 
-                    console.log('[Successfully added booking for %s to their calendar. id %s]',
-                        req.session.user.email, cal.id)
-                }
+            let dbUpdate = await Promise.resolve(db2.run('UPDATE bookings SET calendarId = ? WHERE rowid = ?', cal.id, bookingId));
 
-                delete req.session.proposedBooking;
-                delete req.session.bookingRequest;
+            console.log('[Successfully added booking for %s to their calendar. id %s]',
+                req.session.user.email, cal.id);
 
-                console.log('[User %s (%s) Created a booking for %s from %s to %s]',
-                    req.session.user.name, req.session.user.email,
-                    booking.vehicle.name, booking.pickup, booking.return);
+            delete req.session.proposedBooking;
+            delete req.session.bookingRequest;
 
-                res.redirect('/dash');
-            });
+            console.log('[User %s (%s) Created a booking for %s from %s to %s]',
+                req.session.user.name, req.session.user.email,
+                booking.vehicle.name, booking.pickup, booking.return);
+
+            res.redirect('/dash');
+
         } else {
             res.send('You took too long to accept this booking, it is no longer valid!');
         }
@@ -480,54 +447,13 @@ app.get('/booking/:id/cancel', async(req, res) => {
  * BEGIN APP INITIALIZATION
  */
 Promise.resolve()
-    .then(() => db2.open('./cars.db', { Promise }))
-    .then(() => initDatabase()).then(() => console.log('[Database initialized]'))
+    .then(() => crud.init())
+    .then(() => console.log('[Database initialized]'))
     .then(() => localizer.load())
     .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
     .then(() => startServer())
     .then(() => console.log('[Server started on port %s]', PORT))
     .catch(err => console.log(err));
-
-// create tables
-async function initDatabase() {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const [vErr, bErr] = await Promise.all([
-                db2.exec('CREATE TABLE IF NOT EXISTS vehicles (' +
-                    'vid INTEGER PRIMARY KEY,' +
-                    'name TEXT NOT NULL,' +
-                    'type TEXT NOT NULL,' +
-                    'num_seats INT NOT NULL,' +
-                    'notes TEXT' +
-                    ')'),
-
-                db2.exec('CREATE TABLE IF NOT EXISTS bookings (' +
-                    'user TEXT NOT NULL,' +
-                    'function TEXT NOT NULL,' +
-                    'num_of_people INTEGER NOT NULL,' +
-                    'start_time TEXT NOT NULL,' +
-                    'return_time TEXT NOT NULL,' +
-                    'reason TEXT NOT NULL,' +
-                    'notes TEXT,' +
-                    'vehicle INTEGER NOT NULL,' +
-                    'calendarId TEXT,' +
-                    'CONSTRAINT bookings_vehicle_fk FOREIGN KEY (vehicle) REFERENCES vehicles(vid),' +
-                    'CONSTRAINT bookings_user_fk FOREIGN KEY (user) REFERENCES users(resource_name))'),
-
-                db2.exec('CREATE TABLE IF NOT EXISTS users (' +
-                    'resource_name TEXT PRIMARY KEY,' +
-                    'email TEXT NOT NULL,' +
-                    'name TEXT NOT NULL,' +
-                    'is_admin INT NOT NULL' +
-                    ') WITHOUT ROWID;')
-            ]);
-        } catch (err) {
-            reject(err);
-        }
-
-        resolve();
-    });
-}
 
 function startServer() {
     return new Promise((resolve, reject) => {
@@ -561,19 +487,7 @@ async function saveVehicle(vehicle) {
     }
 }
 
-async function getCalendarEvent(id, userToken, callback) {
-
-
-
-    calendar.events.get({
-        calendarId: 'primary',
-        eventId: id
-    }, callback)
-}
-
-function createCalendarEvent(booking, userTokens, callback) {
-    oauth2Client.setCredentials(userTokens);
-
+async function createCalendarEvent(booking, userToken) {
     let event = {
         summary: 'Car Booking',
         location: 'Parkade',
@@ -588,16 +502,13 @@ function createCalendarEvent(booking, userTokens, callback) {
         }
     };
 
-    calendar.events.insert({
-        calendarId: 'primary',
-        resource: event
-    }, (err, event) => {
-        if(err) {
-            callback(err);
-        } else {
-            callback(null, event);
-        }
-    });
+    return await Promise.resolve(
+        goog.calendar.createCalendarEvent({
+            calendarId: 'primary',
+            resource: event
+        }, userToken)
+    )
+        .catch(err => console.log(err));
 }
 
 // save a booking to the database
@@ -611,7 +522,7 @@ function basicBookingValidation(booking) {
     
     functionValid = validateText(booking.function);
     if(functionValid !== undefined)
-        validation.name = nameValid;
+        validation.function = functionValid;
     
     numPeopleValid = validateNumber(booking.numPeople);
     if(numPeopleValid !== undefined)

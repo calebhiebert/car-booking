@@ -1,68 +1,94 @@
-const db = require('sqlite');
-const Promise = require('bluebird');
+const Sequelize = require('sequelize');
 
-module.exports = {
-    init,
-    user: {
-        find: findUser,
-        create: createUser
+const sequelize = new Sequelize('cars', 'user', 'pass', {
+    host: 'localhost',
+    dialect: 'sqlite',
+
+    pool: {
+        max: 5,
+        min: 0,
+        idle: 10000
+    },
+
+    storage: './cars2.db'
+});
+
+const User = sequelize.define('user', {
+    resourceName: {
+        type: Sequelize.STRING,
+        primaryKey: true
+    },
+    email: {
+        type: Sequelize.STRING
+    },
+    name: {
+        type: Sequelize.STRING
+    },
+    isAdmin: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
     }
-};
+});
 
-function init() {
-    return new Promise((resolve, reject) => {
-        db.open('./cars.db', { Promise })
-            .then(createTables)
-            .then(resolve)
-            .catch(reject);
+const Vehicle = sequelize.define('vehicle', {
+    vid: {
+        type: Sequelize.INTEGER,
+        primaryKey: true
+    },
+    name: {
+        type: Sequelize.STRING
+    },
+    type: {
+        type: Sequelize.STRING
+    },
+    numSeats: {
+        type: Sequelize.INTEGER
+    },
+    isAdmin: {
+        type: Sequelize.BOOLEAN
+    }
+});
+
+const Booking = sequelize.define('booking', {
+    id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    function: {
+        type: Sequelize.STRING
+    },
+    numPeople: {
+        type: Sequelize.INTEGER
+    },
+    startTime: {
+        type: Sequelize.STRING
+    },
+    returnTime: {
+        type: Sequelize.STRING
+    },
+    reason: {
+        type: Sequelize.STRING
+    },
+    notes: {
+        type: Sequelize.STRING
+    },
+    calendarId: {
+        type: Sequelize.STRING
+    }
+});
+
+Booking.belongsTo(User);
+Booking.belongsTo(Vehicle);
+User.hasMany(Booking);
+Vehicle.hasMany(Booking);
+
+sequelize
+    .authenticate()
+    .then(() => sequelize.sync())
+    .then(async () => {
+        let testBookings = await Booking.findAll({
+            include: [Vehicle]
+        });
     });
-}
-
-function createTables() {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const [vErr, bErr] = await Promise.all([
-                db.exec('CREATE TABLE IF NOT EXISTS vehicles (' +
-                    'vid INTEGER PRIMARY KEY,' +
-                    'name TEXT NOT NULL,' +
-                    'type TEXT NOT NULL,' +
-                    'num_seats INT NOT NULL,' +
-                    'notes TEXT' +
-                    ')'),
-
-                db.exec('CREATE TABLE IF NOT EXISTS bookings (' +
-                    'user TEXT NOT NULL,' +
-                    'function TEXT NOT NULL,' +
-                    'num_of_people INTEGER NOT NULL,' +
-                    'start_time TEXT NOT NULL,' +
-                    'return_time TEXT NOT NULL,' +
-                    'reason TEXT NOT NULL,' +
-                    'notes TEXT,' +
-                    'vehicle INTEGER NOT NULL,' +
-                    'calendarId TEXT,' +
-                    'CONSTRAINT bookings_vehicle_fk FOREIGN KEY (vehicle) REFERENCES vehicles(vid),' +
-                    'CONSTRAINT bookings_user_fk FOREIGN KEY (user) REFERENCES users(resource_name))'),
-
-                db.exec('CREATE TABLE IF NOT EXISTS users (' +
-                    'resource_name TEXT PRIMARY KEY,' +
-                    'email TEXT NOT NULL,' +
-                    'name TEXT NOT NULL,' +
-                    'is_admin INT NOT NULL' +
-                    ') WITHOUT ROWID;')
-            ]);
-        } catch (err) {
-            reject(err);
-        }
-
-        resolve();
-    });
-}
-
-async function findUser(resourceName, email) {
-    return await Promise.resolve(db.get('SELECT resource_name, email, name, is_admin FROM users WHERE resource_name = ? OR email = ?', resourceName, email));
-}
-
-async function createUser(resourceName, name, email, is_admin) {
-    return await Promise.resolve(db.run('INSERT INTO users (resource_name, email, name, is_admin) VALUES (?, ?, ?, ?)',
-        resourceName, email, name, is_admin));
-}

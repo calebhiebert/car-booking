@@ -18,7 +18,7 @@
                         <a class="nav-link" id="sign-in" href="<%= genAuthUrl() %>"><%=lang['sign_wth_ggl']%></a>
                     </li>
                 <% } %>
-                <% if (sess.tokens !== undefined && sess.user !== undefined && sess.user.is_admin == 1) { %>
+                <% if (sess.tokens !== undefined && sess.user !== undefined && sess.user.isAdmin == 1) { %>
                     <li class="nav-item">
                         <a class="nav-link" id="sign-in" href="/admin"><%=lang['admin']%></a>
                     </li>

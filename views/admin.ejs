@@ -23,14 +23,14 @@
                 <tr>
                     <td><%= user.name %></td>
                     <td><%= user.email %></td>
-                    <td><%= user.is_admin ? 'true' : 'false'%></td>
-                    <% if(!user.is_admin) { %>
+                    <td><%= user.isAdmin ? 'true' : 'false'%></td>
+                    <% if(!user.isAdmin) { %>
                         <td>
-                            <a href="/grant_admin?resource=<%= user.resource_name %>">Grant Admin</a>
+                            <a href="/grant_admin?resource=<%= user.resourceName %>">Grant Admin</a>
                         </td>
                     <% } else { %>
                         <td>
-                            <a href="/revoke_admin?resource=<%= user.resource_name %>">Revoke Admin</a>
+                            <a href="/revoke_admin?resource=<%= user.resourceName %>">Revoke Admin</a>
                         </td>
                     <% } %>
                 </tr>

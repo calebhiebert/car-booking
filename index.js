@@ -26,6 +26,98 @@ const localizer = require('./localizer');
 const goog = require('./googlestuff');
 const crud = require('./crud');
 
+const Sequelize = require('sequelize');
+
+const sequelize = new Sequelize('cars', 'user', 'pass', {
+    host: 'localhost',
+    dialect: 'sqlite',
+
+    pool: {
+        max: 5,
+        min: 0,
+        idle: 10000
+    },
+
+    storage: './cars2.db'
+});
+
+const User = sequelize.define('user', {
+    resourceName: {
+        type: Sequelize.STRING,
+        primaryKey: true
+    },
+    email: {
+        type: Sequelize.STRING
+    },
+    name: {
+        type: Sequelize.STRING
+    },
+    isAdmin: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    }
+});
+
+const Vehicle = sequelize.define('vehicle', {
+    vid: {
+        type: Sequelize.INTEGER,
+        primaryKey: true
+    },
+    name: {
+        type: Sequelize.STRING,
+        notNull: true
+    },
+    type: {
+        type: Sequelize.STRING,
+        notNull: true
+    },
+    numSeats: {
+        type: Sequelize.INTEGER,
+        notNull: true
+    },
+    isAdmin: {
+        type: Sequelize.BOOLEAN,
+        notNull: true
+    }
+});
+
+const Booking = sequelize.define('booking', {
+    id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    function: {
+        type: Sequelize.STRING
+    },
+    numPeople: {
+        type: Sequelize.INTEGER
+    },
+    startTime: {
+        type: Sequelize.STRING
+    },
+    returnTime: {
+        type: Sequelize.STRING
+    },
+    reason: {
+        type: Sequelize.STRING
+    },
+    notes: {
+        type: Sequelize.STRING
+    },
+    calendarId: {
+        type: Sequelize.STRING
+    }
+});
+
+//TODO validate vehicle additions
+
+Booking.belongsTo(User);
+Booking.belongsTo(Vehicle);
+User.hasMany(Booking);
+Vehicle.hasMany(Booking);
+
 let prod = process.argv[2] === 'prod';
 
 goog.init(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, prod ? PROD_REDIRECT_URL : GOOGLE_REDIRECT_URL);
@@ -100,17 +192,23 @@ app.use(async (req, res, next) => {
 
 app.use(async (req, res, next) => {
     if(req.session.tokens) {
-        const usr = crud.user.find(req.session.userCache.resourceName, req.session.userCache.email);
 
-        if (usr === undefined) {
+        const usr = await User.findOne({ where: { resourceName: req.session.userCache.resourceName } });
+
+        if (usr === undefined || usr === null) {
             const usr = req.session.userCache;
-            const res = crud.user.create(usr.resourceName, usr.name, usr.email, false);
+
+            const newUser = await User.create({
+                resourceName: usr.resourceName,
+                email: usr.email,
+                name: usr.name
+            });
 
             console.log('[User %s (%s) logged in for the first time]',
-                usr.name, usr.email);
+                newUser.name, newUser.email);
         }
 
-        req.session.user = await Promise.resolve(db2.get('SELECT resource_name, email, name, is_admin FROM users WHERE resource_name = ?', usr.resource_name));
+        req.session.user = usr;
 
         next();
     } else {
@@ -139,7 +237,7 @@ app.use(async (req, res, next) => {
     res.locals.adminPage = isAdminPath;
 
     if(isAdminPath) {
-        if(req.session.signedIn && req.session.user.is_admin)
+        if(req.session.signedIn && req.session.user.isAdmin)
             next();
         else
             res.render('no_perms');
@@ -173,17 +271,6 @@ app.get('/', function (req, res) {
     }
 });
 
-app.post('/form', async (req, res) => {
-    frm.handle(req, {
-        success() {
-            console.log('success!');
-        },
-        other(form) {
-            res.render('frm', { formHtml: form.toHTML() })
-        }
-    })
-});
-
 app.get('/setlang/:lang', (req, res) => {
 
     let lang = req.params.lang;
@@ -198,23 +285,28 @@ app.get('/setlang/:lang', (req, res) => {
 });
 
 app.get('/dash', async (req, res) => {
-    const bookings = await Promise.resolve(db2.prepare('SELECT bookings.rowid AS id, users.name AS name, users.email AS email, function, num_of_people AS numPeople, start_time AS startTime, return_time AS returnTime, reason, notes, vehicle FROM bookings JOIN users ON bookings.user = users.resource_name WHERE start_time > ? OR return_time > ? ORDER BY start_time, return_time ASC'))
-        .then(stmt => stmt.all([moment().tz(TZ).unix(), moment().tz(TZ).unix()]));
+    let testBookings = await Booking.findAll({
+        include: [User, Vehicle],
+
+        where: {
+            startTime: { $gte: moment().tz(TZ).unix() },
+            returnTime: { $gte: moment().tz(TZ).unix() }
+        }
+    });
+
+    console.log(testBookings);
 
     let visData = [];
 
-    for (let booking of bookings) {
+    for (let booking of testBookings) {
 
         booking.startTime = moment(booking.startTime).tz(TZ);
         booking.returnTime = moment(booking.returnTime).tz(TZ);
 
-        booking.vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?'))
-            .then(stmt => stmt.get([booking.vehicle]));
-
         visData.push({id: booking.id, start: booking.startTime, end: booking.returnTime, content: (booking.name + ' (' + booking.email + ') with ' + booking.vehicle.name)})
     }
 
-    res.render('dash', {bookings, visData});
+    res.render('dash', {bookings: testBookings, visData});
 });
 
 app.get('/no_cars', async (req, res) => {
@@ -249,6 +341,8 @@ app.get('/accept_booking', async (req, res) => {
             //sendEmail(booking, req.session.user.email);
 
             const cal = await createCalendarEvent(booking, req.session.tokens);
+
+            const dbBooking = Booking.findById(bookingId);
 
             let dbUpdate = await Promise.resolve(db2.run('UPDATE bookings SET calendarId = ? WHERE rowid = ?', cal.id, bookingId));
 
@@ -315,9 +409,7 @@ app.post('/create_booking', async (req, res) => {
 });
 
 app.get('/vehicles', async (req, res) => {
-    const vehicles = await Promise.resolve(
-        db2.all('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles')
-    );
+    const vehicles = await Vehicle.findAll();
 
     res.render('cars', { vehicles });
 });
@@ -330,8 +422,9 @@ app.get('/add_vehicle', (req, res) => {
 app.get('/edit_vehicle/:id', async (req, res) => {
     req.session.operation = 'edit';
 
-    const vehicle = await Promise.resolve(db2.prepare('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = $vid'))
-        .then(stmt => stmt.get({$vid: req.params.id}));
+    const vehicle = await Vehicle.findById(req.params.id);
+
+    console.log(vehicle);
 
     if(vehicle !== undefined) {
         res.render('vehicle_CU', {validation: {}, input: vehicle, operation: req.session.operation});
@@ -341,11 +434,18 @@ app.get('/edit_vehicle/:id', async (req, res) => {
 });
 
 app.post('/add_vehicle', async (req, res) => {
-    let vehicle = new Vehicle(req.body.name, req.body.type, req.body.numSeats, req.body.notes).setId(req.body.id);
-    let validation = vehicle.validate();
+    let vehicle = {
+        name: req.body.name,
+        type: req.body.type,
+        numSeats: req.body.numSeats,
+        notes: req.body.notes,
+        vid: req.body.id
+    };
 
-    if (validation.valid) {
-        let id = await Promise.resolve(saveVehicle(vehicle));
+    // let validation = vehicle.validate();
+
+    if (true) {
+        let id = await Vehicle.upsert(vehicle);
         res.redirect('/vehicles');
     } else {
         res.render('vehicle_CU', {validation, input: req.body, operation: req.session.operation})
@@ -353,7 +453,7 @@ app.post('/add_vehicle', async (req, res) => {
 });
 
 app.get('/admin', async (req, res) => {
-    const users = await Promise.resolve(db2.all('SELECT resource_name, email, name, is_admin FROM users'));
+    const users = await User.findAll();
 
     res.render('admin', { users });
 });
@@ -373,11 +473,14 @@ app.get('/revoke_admin', async (req, res) => {
 });
 
 app.get('/grant_admin', async (req, res) => {
-    let resource = req.query.resource;
-    const user = await Promise.resolve(db2.get('SELECT resource_name, name, email FROM users WHERE resource_name = ?', resource));
+    const user = await User.findById(req.query.resource);
 
-    if(user !== undefined) {
-        const res = await Promise.resolve(db2.run('UPDATE users SET is_admin = 1 WHERE resource_name = ?', resource));
+    if(user !== undefined && user !== null) {
+        user.isAdmin = true;
+
+        const update = await user.update();
+
+        console.log(update);
 
         console.log('[%s granted admin access to %s (%s)]',
             req.session.user.name, user.name, user.email);
@@ -418,7 +521,7 @@ app.get('/booking/:id/cancel', async(req, res) => {
     } else {
         const bookingName = await Promise.resolve(db2.get('SELECT name, email FROM users WHERE resource_name = ?', booking.user));
 
-        if (req.session.user.is_admin || req.session.user.resource_name === booking.user) {
+        if (req.session.user.isAdmin || req.session.user.resource_name === booking.user) {
             try {
                 const dbDelete = await Promise.resolve(db2.run('DELETE FROM bookings WHERE rowid = ?', req.params.id));
                 const caDelete = await Promise.resolve(goog.calendar.deleteCalendarEvent({
@@ -446,9 +549,8 @@ app.get('/booking/:id/cancel', async(req, res) => {
 /**
  * BEGIN APP INITIALIZATION
  */
+
 Promise.resolve()
-    .then(() => crud.init())
-    .then(() => console.log('[Database initialized]'))
     .then(() => localizer.load())
     .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
     .then(() => startServer())
@@ -473,18 +575,9 @@ function startServer() {
 
 // save a vehicle to the database
 async function saveVehicle(vehicle) {
-    if(vehicle.vid === undefined) {
-        const insert = await Promise.resolve(db2.prepare('INSERT INTO vehicles (name, type, num_seats, notes) VALUES (?, ?, ?, ?)'))
-            .then(stmt => stmt.run([vehicle.name, vehicle.type, vehicle.numSeats, vehicle.notes]));
-
-        return insert.stmt.lastID;
-    } else {
-        const insert = await Promise.resolve(
-            db2.prepare('UPDATE vehicles SET name = ?, type = ?, num_seats = ?, notes = ? WHERE vid = ?'))
-            .then(stmt => stmt.run([vehicle.name, vehicle.type, vehicle.numSeats, vehicle.notes, vehicle.vid]));
-
-        return vehicle.vid;
-    }
+    Vehicle
+        .upsert(vehicle)
+        .then(vehicle => console.log(vehicle));
 }
 
 async function createCalendarEvent(booking, userToken) {
@@ -677,43 +770,6 @@ function generateCalendar(booking) {
     });
 
     return cal;
-}
-
-class Vehicle {
-    constructor(name, type, numSeats, notes) {
-        this.name = name;
-        this.type = type;
-        this.numSeats = numSeats;
-        this.notes = notes;
-    }
-
-    setId(id) {
-        this.vid = id;
-        return this;
-    }
-
-    validate() {
-        let validation = {valid: true};
-
-        let v_car_name = validateText(this.name);
-        if(v_car_name !== undefined)
-            validation.name = v_car_name;
-
-        let v_car_type = validateText(this.type);
-        if(v_car_type!== undefined)
-            validation.type = v_car_type;
-
-        if(this.numSeats === undefined || this.numSeats === null) {
-            validation.numSeats = 'This field is required';
-        } else if(isNaN(this.numSeats)) {
-            validation.numSeats = 'This field must be a number';
-        }
-
-        if(Object.keys(validation).length > 1)
-            validation.valid = false;
-
-        return validation;
-    }
 }
 
 function validateText(value, minChars = 3, maxChars = 60, nullErr = 'This field must not be blank', lengthErr = 'This field must be between 3 and 60 characters long') {

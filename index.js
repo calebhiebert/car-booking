@@ -560,7 +560,7 @@ function basicBookingValidation(booking) {
     booking.returnDate = moment.tz(booking.returnDate, 'YYYY-MM-DD', TZ);
 
     let error = {
-        error: undefined
+        error: {}
     };
 
     if(!booking.startTime.isValid()) {

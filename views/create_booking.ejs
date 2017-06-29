@@ -3,7 +3,8 @@
 <head>
     <title>Car Booking</title>
     <% include head.ejs %>
-    <link rel="stylesheet" href="/jquery.timepicker.min.js">
+    <link rel="stylesheet" href="/jquery.timepicker.css">
+    <link rel="stylesheet" href="/bootstrap-datepicker3.standalone.min.css">
 </head>
 <body>
 <% include nav.ejs %>
@@ -15,43 +16,45 @@
             <form action="/create_booking" method="post">
                 <fieldset class="form-group<%= validation.function != undefined ? ' has-danger' : '' %>">
                     <label for="function">Which function is using this vehicle?</label>
-                    <input id="function" name="function" class="form-control" type="text" value="<%= bookingRequest.function %>" required>
+                    <input id="function" name="function" class="form-control" type="text" value="<%= bookingRequest.function %>" >
                     <span class="form-control-feedback"><%= validation.function %></span>
                 </fieldset>
 
                 <fieldset class="form-group<%= validation.numPeople != undefined ? ' has-danger' : '' %>">
                     <label for="numPeople">How many people will be in the vehicle?</label>
-                    <input id="numPeople" name="numPeople" class="form-control" type="number" value="<%= bookingRequest.numPeople %>" required>
+                    <input id="numPeople" name="numPeople" class="form-control" type="number" value="<%= bookingRequest.numPeople %>" >
                     <span class="form-control-feedback"><%= validation.numPeople %></span>
                 </fieldset>
 
-                <fieldset class="form-group<%= validation.startDate != undefined ? ' has-danger' : '' %>">
-                    <label for="startDate">Date that you will be needing the vehicle</label>
-                    <input id="startDate" name="startDate" class="form-control" type="date" value="<%= (bookingRequest.startDate || moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD'))  %>" required>
-                    <span class="form-control-feedback"><%= validation.startDate %></span>
-                </fieldset>
+                <div id="daterange">
+                    <fieldset class="form-group<%= validation.startDate != undefined ? ' has-danger' : '' %>">
+                        <label for="startDate">Date that you will be needing the vehicle</label>
+                        <input id="startDate" name="startDate" class="form-control date start" type="text" value="<%= (bookingRequest.startDate || moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD'))  %>" >
+                        <span class="form-control-feedback"><%= validation.startDate %></span>
+                    </fieldset>
 
-                <fieldset class="form-group<%= validation.returnDate != undefined ? ' has-danger' : '' %>">
-                    <label for="returnDate">Return date of the vehicle</label>
-                    <input id="returnDate" name="returnDate" class="form-control" type="date" value="<%= (bookingRequest.returnDate || moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD')) %>" required>
-                    <span class="form-control-feedback"><%= validation.returnDate %></span>
-                </fieldset>
+                    <fieldset class="form-group<%= validation.returnDate != undefined ? ' has-danger' : '' %>">
+                        <label for="returnDate">Return date of the vehicle</label>
+                        <input id="returnDate" name="returnDate" class="form-control date end" type="text" value="<%= (bookingRequest.returnDate || moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD')) %>" >
+                        <span class="form-control-feedback"><%= validation.returnDate %></span>
+                    </fieldset>
 
-                <fieldset class="form-group<%= validation.startTime != undefined ? ' has-danger' : '' %>">
-                    <label for="startTime">Start Time</label>
-                    <input id="startTime" name="startTime" class="form-control" type="time" value="<%= bookingRequest.startTime !== undefined ? moment(bookingRequest.startDate + ' ' + bookingRequest.startTime).format('HH:mm') : '' %>" required>
-                    <span class="form-control-feedback"><%= validation.startTime %></span>
-                </fieldset>
+                    <fieldset class="form-group time<%= validation.startTime != undefined ? ' has-danger' : '' %>">
+                        <label for="startTime">Start Time</label>
+                        <input id="startTime" name="startTime" class="form-control time start" type="text" value="<%= bookingRequest.startTime !== undefined ? moment(bookingRequest.startDate + ' ' + bookingRequest.startTime).format('HH:mm') : '' %>" >
+                        <span class="form-control-feedback"><%= validation.startTime %></span>
+                    </fieldset>
 
-                <fieldset class="form-group<%= validation.returnTime != undefined ? ' has-danger' : '' %>">
-                    <label for="returnTime">Return Time</label>
-                    <input id="returnTime" name="returnTime" class="form-control" type="time" value="<%= bookingRequest.startTime !== undefined ? moment(bookingRequest.returnDate + ' ' + bookingRequest.returnTime).format('HH:mm') : '' %>" required>
-                    <span class="form-control-feedback"><%= validation.returnTime %></span>
-                </fieldset>
+                    <fieldset class="form-group time<%= validation.returnTime != undefined ? ' has-danger' : '' %>">
+                        <label for="returnTime">Return Time</label>
+                        <input id="returnTime" name="returnTime" class="form-control time end" type="text" value="<%= bookingRequest.startTime !== undefined ? moment(bookingRequest.returnDate + ' ' + bookingRequest.returnTime).format('HH:mm') : '' %>" >
+                        <span class="form-control-feedback"><%= validation.returnTime %></span>
+                    </fieldset>
+                </div>
 
                 <fieldset class="form-group<%= validation.reason != undefined ? ' has-danger' : '' %>">
                     <label for="reason">Reason</label>
-                    <input id="reason" name="reason" class="form-control" type="text" value="<%= bookingRequest.reason %>" required>
+                    <input id="reason" name="reason" class="form-control" type="text" value="<%= bookingRequest.reason %>" >
                     <span class="form-control-feedback"><%= validation.reason %></span>
                 </fieldset>
 
@@ -67,5 +70,20 @@
 </div>
 <% include scripts.ejs %>
 <script src="/jquery.timepicker.min.js"></script>
+<script src="/datepair.min.js"></script>
+<script src="/bootstrap-datepicker.min.js"></script>
+<script src="/jquery.datepair.min.js"></script>
+<script>
+    $('#daterange .date').datepicker({
+        format: 'yyyy-m-d',
+        autoclose: true
+    });
+
+    $('#daterange .time').timepicker({
+        'timeFormat': 'g:ia'
+    });
+
+    $('#daterange').datepair();
+</script>
 </body>
 </html>

@@ -20,103 +20,12 @@ const Promise = require('bluebird');
 const db2 = require('sqlite');
 const nodemailer = require('nodemailer');
 const mg = require('nodemailer-mailgun-transport');
-const fs = require('fs');
 const ical = require('ical-generator');
+const Joi = require('joi');
+
 const localizer = require('./localizer');
 const goog = require('./googlestuff');
 const crud = require('./crud');
-
-const Sequelize = require('sequelize');
-
-const sequelize = new Sequelize('cars', 'user', 'pass', {
-    host: 'localhost',
-    dialect: 'sqlite',
-
-    pool: {
-        max: 5,
-        min: 0,
-        idle: 10000
-    },
-
-    storage: './cars2.db'
-});
-
-const User = sequelize.define('user', {
-    resourceName: {
-        type: Sequelize.STRING,
-        primaryKey: true
-    },
-    email: {
-        type: Sequelize.STRING
-    },
-    name: {
-        type: Sequelize.STRING
-    },
-    isAdmin: {
-        type: Sequelize.BOOLEAN,
-        allowNull: false,
-        defaultValue: false
-    }
-});
-
-const Vehicle = sequelize.define('vehicle', {
-    vid: {
-        type: Sequelize.INTEGER,
-        primaryKey: true
-    },
-    name: {
-        type: Sequelize.STRING,
-        notNull: true
-    },
-    type: {
-        type: Sequelize.STRING,
-        notNull: true
-    },
-    numSeats: {
-        type: Sequelize.INTEGER,
-        notNull: true
-    },
-    isAdmin: {
-        type: Sequelize.BOOLEAN,
-        notNull: true
-    }
-});
-
-const Booking = sequelize.define('booking', {
-    id: {
-        type: Sequelize.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    function: {
-        type: Sequelize.STRING
-    },
-    numPeople: {
-        type: Sequelize.INTEGER
-    },
-    startTime: {
-        type: Sequelize.STRING
-    },
-    returnTime: {
-        type: Sequelize.STRING
-    },
-    reason: {
-        type: Sequelize.STRING
-    },
-    notes: {
-        type: Sequelize.STRING
-    },
-    calendarId: {
-        type: Sequelize.STRING
-    }
-});
-
-//TODO validate vehicle additions
-
-Booking.belongsTo(User);
-Booking.belongsTo(Vehicle);
-User.hasMany(Booking);
-Vehicle.hasMany(Booking);
 
 let prod = process.argv[2] === 'prod';
 
@@ -193,12 +102,12 @@ app.use(async (req, res, next) => {
 app.use(async (req, res, next) => {
     if(req.session.tokens) {
 
-        const usr = await User.findOne({ where: { resourceName: req.session.userCache.resourceName } });
+        const usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName } });
 
         if (usr === undefined || usr === null) {
             const usr = req.session.userCache;
 
-            const newUser = await User.create({
+            const newUser = await crud.User.create({
                 resourceName: usr.resourceName,
                 email: usr.email,
                 name: usr.name
@@ -285,8 +194,8 @@ app.get('/setlang/:lang', (req, res) => {
 });
 
 app.get('/dash', async (req, res) => {
-    let testBookings = await Booking.findAll({
-        include: [User, Vehicle],
+    let testBookings = await crud.Booking.findAll({
+        include: [crud.User, crud.Vehicle],
 
         where: {
             startTime: { $gte: moment().tz(TZ).unix() },
@@ -342,7 +251,7 @@ app.get('/accept_booking', async (req, res) => {
 
             const cal = await createCalendarEvent(booking, req.session.tokens);
 
-            const dbBooking = Booking.findById(bookingId);
+            const dbBooking = crud.Booking.findById(bookingId);
 
             let dbUpdate = await Promise.resolve(db2.run('UPDATE bookings SET calendarId = ? WHERE rowid = ?', cal.id, bookingId));
 
@@ -409,7 +318,7 @@ app.post('/create_booking', async (req, res) => {
 });
 
 app.get('/vehicles', async (req, res) => {
-    const vehicles = await Vehicle.findAll();
+    const vehicles = await crud.Vehicle.findAll();
 
     res.render('cars', { vehicles });
 });
@@ -422,11 +331,9 @@ app.get('/add_vehicle', (req, res) => {
 app.get('/edit_vehicle/:id', async (req, res) => {
     req.session.operation = 'edit';
 
-    const vehicle = await Vehicle.findById(req.params.id);
+    const vehicle = await crud.Vehicle.findById(req.params.id);
 
-    console.log(vehicle);
-
-    if(vehicle !== undefined) {
+    if(vehicle !== null) {
         res.render('vehicle_CU', {validation: {}, input: vehicle, operation: req.session.operation});
     } else {
         res.redirect('/');
@@ -435,35 +342,39 @@ app.get('/edit_vehicle/:id', async (req, res) => {
 
 app.post('/add_vehicle', async (req, res) => {
     let vehicle = {
+        vid: req.body.vid,
         name: req.body.name,
         type: req.body.type,
         numSeats: req.body.numSeats,
-        notes: req.body.notes,
-        vid: req.body.id
+        notes: req.body.notes
     };
 
-    // let validation = vehicle.validate();
+    const validation = validateVehicle(vehicle);
 
-    if (true) {
-        let id = await Vehicle.upsert(vehicle);
+    if (validation.error === null) {
+        await crud.Vehicle.upsert(vehicle);
         res.redirect('/vehicles');
     } else {
-        res.render('vehicle_CU', {validation, input: req.body, operation: req.session.operation})
+        let details = validation.error.details[0];
+        let errMsg = {};
+        errMsg[details.path] = details.message;
+        res.render('vehicle_CU', {validation: errMsg, input: req.body, operation: req.session.operation})
     }
 });
 
 app.get('/admin', async (req, res) => {
-    const users = await User.findAll();
+    const users = await crud.User.findAll();
 
     res.render('admin', { users });
 });
 
 app.get('/revoke_admin', async (req, res) => {
-    let resource = req.query.resource;
-    const user = await Promise.resolve(db2.get('SELECT resource_name, name, email FROM users WHERE resource_name = ?', resource));
+    const user = await crud.User.findById(req.query.resource);
 
-    if(user !== undefined) {
-        const res = await Promise.resolve(db2.run('UPDATE users SET is_admin = 0 WHERE resource_name = ?', resource));
+    if(user !== undefined && user !== null) {
+        user.isAdmin = false;
+
+        await user.save();
 
         console.log('[%s revoked admin access for %s (%s)]',
             req.session.user.name, user.name, user.email);
@@ -473,14 +384,12 @@ app.get('/revoke_admin', async (req, res) => {
 });
 
 app.get('/grant_admin', async (req, res) => {
-    const user = await User.findById(req.query.resource);
+    const user = await crud.User.findById(req.query.resource);
 
     if(user !== undefined && user !== null) {
         user.isAdmin = true;
 
-        const update = await user.update();
-
-        console.log(update);
+        await user.save();
 
         console.log('[%s granted admin access to %s (%s)]',
             req.session.user.name, user.name, user.email);
@@ -551,6 +460,8 @@ app.get('/booking/:id/cancel', async(req, res) => {
  */
 
 Promise.resolve()
+    .then(crud.init())
+    .then(() => console.log('[Loaded Database]'))
     .then(() => localizer.load())
     .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
     .then(() => startServer())
@@ -575,7 +486,7 @@ function startServer() {
 
 // save a vehicle to the database
 async function saveVehicle(vehicle) {
-    Vehicle
+   crud.Vehicle
         .upsert(vehicle)
         .then(vehicle => console.log(vehicle));
 }
@@ -610,63 +521,64 @@ async function saveBooking(booking) {
         .then(stmt => stmt.run([booking.user, booking.function, booking.numPeople, booking.pickup, booking.return, booking.reason, booking.notes, booking.vehicle.vid, null]));
 }
 
+function validateVehicle(vehicle) {
+     const schema = Joi.object().keys({
+         vid: Joi.number().integer(),
+         name: Joi.string().min(3).max(30).required(),
+         type: Joi.string().min(2).max(30).required(),
+         numSeats: Joi.number().integer().min(1).required(),
+         notes: Joi.string().allow('')
+     });
+
+     return Joi.validate(vehicle, schema);
+}
+
 function basicBookingValidation(booking) {
-    validation = { valid: true };
-    
-    functionValid = validateText(booking.function);
-    if(functionValid !== undefined)
-        validation.function = functionValid;
-    
-    numPeopleValid = validateNumber(booking.numPeople);
-    if(numPeopleValid !== undefined)
-        validation.numPeople = numPeopleValid;
+    const schema = Joi.object().keys({
+        function: Joi.string().min(3).max(60).required(),
+        numPeople: Joi.number().min(1).required(),
+        startDate: Joi.string().required(),
+        returnDate: Joi.string().required(),
+        startTime: Joi.string().required(),
+        returnTime: Joi.string().required(),
+        reason: Joi.string().min(3).required()
+    });
 
-    startDateValid = validateDate(booking.startDate);
-    if(startDateValid !== undefined)
-        validation.startDate = startDateValid;
+    const validation = Joi.validate(booking, schema);
+    console.log(validation);
 
-    returnDateValid = validateDate(booking.returnDate);
-    if(returnDateValid !== undefined)
-        validation.returnDate = returnDateValid;
+    return Joi.validate(booking, schema);
 
-    startTimeValid = validateTime(booking.startTime);
-    if(startTimeValid !== undefined)
-        validation.startTime = startTimeValid;
+    // if(startDateValid === undefined && returnDateValid === undefined && startTimeValid === undefined && returnTimeValid === undefined) {
+    //     let startTime = moment.tz(booking.startDate + ' ' + booking.startTime, TZ);
+    //     let returnTime = moment.tz(booking.returnDate + ' ' + booking.returnTime, TZ);
+    //
+    //     let now = moment().tz(TZ);
+    //
+    //     if(startTime.isSameOrBefore(now, 'minutes')) {
+    //         validation.startDate = 'The date cannot be in the past';
+    //     } else if (returnTime.isSameOrBefore(now, 'minutes')) {
+    //         validation.returnDate = 'The date cannot be in the past';
+    //     }
+    //
+    //     let diff = returnTime.diff(startTime, 'minutes');
+    //
+    //     if(diff < 0) {
+    //         validation.startTime = 'Start time cannot be after return time';
+    //     } else if (diff < 30) {
+    //         validation.returnTime = 'The minimum booking time is 30 minutes';
+    //     }
+    // }
 
-    returnTimeValid = validateTime(booking.returnTime);
-    if(returnTimeValid !== undefined)
-        validation.returnTime = returnTimeValid;
-
-    if(startDateValid === undefined && returnDateValid === undefined && startTimeValid === undefined && returnTimeValid === undefined) {
-        let startTime = moment.tz(booking.startDate + ' ' + booking.startTime, TZ);
-        let returnTime = moment.tz(booking.returnDate + ' ' + booking.returnTime, TZ);
-
-        let now = moment().tz(TZ);
-
-        if(startTime.isSameOrBefore(now, 'minutes')) {
-            validation.startDate = 'The date cannot be in the past';
-        } else if (returnTime.isSameOrBefore(now, 'minutes')) {
-            validation.returnDate = 'The date cannot be in the past';
-        }
-
-        let diff = returnTime.diff(startTime, 'minutes');
-
-        if(diff < 0) {
-            validation.startTime = 'Start time cannot be after return time';
-        } else if (diff < 30) {
-            validation.returnTime = 'The minimum booking time is 30 minutes';
-        }
-    }
-
-    reasonValid = validateText(booking.reason);
-    if(reasonValid !== undefined)
-        validation.reason = reasonValid;
-
-    if(Object.keys(validation).length > 1) {
-        validation.valid = false;
-    }
-
-    return validation;
+    // reasonValid = validateText(booking.reason);
+    // if(reasonValid !== undefined)
+    //     validation.reason = reasonValid;
+    //
+    // if(Object.keys(validation).length > 1) {
+    //     validation.valid = false;
+    // }
+    //
+    // return validation;
 }
 
 // process a booking object
@@ -770,50 +682,6 @@ function generateCalendar(booking) {
     });
 
     return cal;
-}
-
-function validateText(value, minChars = 3, maxChars = 60, nullErr = 'This field must not be blank', lengthErr = 'This field must be between 3 and 60 characters long') {
-    if(value === undefined || value === null) {
-        return nullErr;
-    } else if (value.length < minChars || value.length > maxChars) {
-        return lengthErr;
-    }
-}
-
-function validateNumber(value, min = -Number.MAX_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER, nullErr = 'This field must not be blank') {
-    if(value === undefined || value === null)
-        return nullErr;
-    else if (isNaN(value))
-        return 'Please enter a number';
-    else if (value < min || value > max)
-        return 'Must be in range ' + min + ' to ' + max;
-}
-
-function validateDate(value, nullErr = 'This field must not be blank') {
-    if(value === undefined || value === null)
-        return nullErr;
-    else if (!moment(value).isValid())
-        return 'Please enter a valid date';
-}
-
-function validateTime(value, nullErr = 'This field must not be blank') {
-    let timeRegex = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
-
-    if(value === undefined || value === null)
-        return nullErr;
-    else if (!timeRegex.test(value))
-        return 'Must be a valid time';
-}
-
-function contains(arr, value) {
-    let c = false;
-
-    arr.forEach(e => {
-        if(e.includes(value))
-            c = true;
-    });
-
-    return c;
 }
 
 function wipeTokens(session) {

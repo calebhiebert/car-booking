@@ -19,6 +19,7 @@
     "google-auth-library": "^0.10.0",
     "googleapis": "^19.0.0",
     "ical-generator": "^0.2.9",
+    "joi": "^10.6.0",
     "moment": "^2.18.1",
     "moment-timezone": "^0.5.13",
     "nodemailer": "^4.0.1",

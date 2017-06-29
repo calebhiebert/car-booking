@@ -3,6 +3,9 @@ const Sequelize = require('sequelize');
 const sequelize = new Sequelize('cars', 'user', 'pass', {
     host: 'localhost',
     dialect: 'sqlite',
+    logging() {
+
+    },
 
     pool: {
         max: 5,
@@ -13,82 +16,99 @@ const sequelize = new Sequelize('cars', 'user', 'pass', {
     storage: './cars2.db'
 });
 
-const User = sequelize.define('user', {
-    resourceName: {
-        type: Sequelize.STRING,
-        primaryKey: true
-    },
-    email: {
-        type: Sequelize.STRING
-    },
-    name: {
-        type: Sequelize.STRING
-    },
-    isAdmin: {
-        type: Sequelize.BOOLEAN,
-        allowNull: false,
-        defaultValue: false
-    }
-});
+let User, Vehicle, Booking;
 
-const Vehicle = sequelize.define('vehicle', {
-    vid: {
-        type: Sequelize.INTEGER,
-        primaryKey: true
-    },
-    name: {
-        type: Sequelize.STRING
-    },
-    type: {
-        type: Sequelize.STRING
-    },
-    numSeats: {
-        type: Sequelize.INTEGER
-    },
-    isAdmin: {
-        type: Sequelize.BOOLEAN
-    }
-});
+module.exports = {
+    init
+};
 
-const Booking = sequelize.define('booking', {
-    id: {
-        type: Sequelize.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    function: {
-        type: Sequelize.STRING
-    },
-    numPeople: {
-        type: Sequelize.INTEGER
-    },
-    startTime: {
-        type: Sequelize.STRING
-    },
-    returnTime: {
-        type: Sequelize.STRING
-    },
-    reason: {
-        type: Sequelize.STRING
-    },
-    notes: {
-        type: Sequelize.STRING
-    },
-    calendarId: {
-        type: Sequelize.STRING
-    }
-});
+function init() {
+    return new Promise((resolve, reject) => {
+        try {
+            User = sequelize.define('user', {
+                resourceName: {
+                    type: Sequelize.STRING,
+                    primaryKey: true
+                },
+                email: {
+                    type: Sequelize.STRING
+                },
+                name: {
+                    type: Sequelize.STRING
+                },
+                isAdmin: {
+                    type: Sequelize.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false
+                }
+            });
 
-Booking.belongsTo(User);
-Booking.belongsTo(Vehicle);
-User.hasMany(Booking);
-Vehicle.hasMany(Booking);
+            Vehicle = sequelize.define('vehicle', {
+                vid: {
+                    type: Sequelize.INTEGER,
+                    primaryKey: true
+                },
+                name: {
+                    type: Sequelize.STRING,
+                    notNull: true
+                },
+                type: {
+                    type: Sequelize.STRING,
+                    notNull: true
+                },
+                numSeats: {
+                    type: Sequelize.INTEGER,
+                    notNull: true
+                },
+                isAdmin: {
+                    type: Sequelize.BOOLEAN,
+                    notNull: true
+                }
+            });
 
-sequelize
-    .authenticate()
-    .then(() => sequelize.sync())
-    .then(async () => {
-        let testBookings = await Booking.findAll({
-            include: [Vehicle]
-        });
-    });
+            Booking = sequelize.define('booking', {
+                id: {
+                    type: Sequelize.INTEGER,
+                    primaryKey: true,
+                    autoIncrement: true
+                },
+                function: {
+                    type: Sequelize.STRING
+                },
+                numPeople: {
+                    type: Sequelize.INTEGER
+                },
+                startTime: {
+                    type: Sequelize.STRING
+                },
+                returnTime: {
+                    type: Sequelize.STRING
+                },
+                reason: {
+                    type: Sequelize.STRING
+                },
+                notes: {
+                    type: Sequelize.STRING
+                },
+                calendarId: {
+                    type: Sequelize.STRING
+                }
+            });
+
+            Booking.belongsTo(User);
+            Booking.belongsTo(Vehicle);
+            User.hasMany(Booking);
+            Vehicle.hasMany(Booking);
+
+            sequelize.sync();
+
+            module.exports.User = User;
+            module.exports.Vehicle = Vehicle;
+            module.exports.Booking = Booking;
+
+            resolve();
+        } catch (err) {
+            reject(err);
+        }
+    })
+}

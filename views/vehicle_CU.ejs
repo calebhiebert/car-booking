@@ -13,7 +13,7 @@
             <h3>Create Vehicle</h3>
             <form action="/add_vehicle" method="post">
                 <% if(operation == 'edit') { %>
-                    <input name="id" value="<%= input.vid %>" type="hidden">
+                    <input name="vid" value="<%= input.vid %>" type="hidden">
                 <% } %>
                 <fieldset class="form-group<%= validation.name != undefined ? ' has-danger' : '' %>">
                     <label for="car_name">Vehicle Name</label>

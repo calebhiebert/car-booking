@@ -17,7 +17,6 @@ const session = require('express-session');
 const sqstore = require('connect-sqlite3')(session);
 const moment = require('moment-timezone');
 const Promise = require('bluebird');
-const db2 = require('sqlite');
 const nodemailer = require('nodemailer');
 const mg = require('nodemailer-mailgun-transport');
 const ical = require('ical-generator');
@@ -30,7 +29,6 @@ const crud = require('./crud');
 let prod = process.argv[2] === 'prod';
 
 goog.init(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, prod ? PROD_REDIRECT_URL : GOOGLE_REDIRECT_URL);
-let oauth2Client = goog.oauth2Client;
 
 //TODO make a module to deal with email stuff
 //const mail = require('./mailer');
@@ -73,18 +71,18 @@ app.locals = {
 
 app.use(async (req, res, next) => {
 
-    if(req.session.language === undefined)
-        req.session.language = 'english';
+    if(req.session['language'] === undefined)
+        req.session['language'] = 'english';
 
     res.locals.sess = req.session;
-    res.locals.lang = localizer.lang(req.session.language);
+    res.locals.lang = localizer.lang(req.session['language']);
     next();
 });
 
 app.use(async (req, res, next) => {
-    if(req.session.tokens !== undefined && req.session.userCache === undefined) {
+    if(req.session['tokens'] !== undefined && req.session.userCache === undefined) {
         try {
-            const me = await Promise.resolve(goog.people.getMe(req.session.tokens));
+            const me = await Promise.resolve(goog.people.getMe(req.session['tokens']));
 
             req.session.userCache = {
                 name: me.names[0].displayName,

@@ -40,11 +40,11 @@
         </div>
     </div>
     <% if (event.calendarUrl !== undefined) { %>
-        <a href="<%= event.calendarUrl %>" class="btn btn-outline-info mt-2">Calendar</a>
+        <a href="<%= event.calendarUrl %>" target="_blank" class="btn btn-outline-info mt-2">Calendar</a>
     <% } %>
 
     <% if(sess.user.resource_name === booking.user.resource_name || sess.user.is_admin) { %>
-        <a href="/booking/<%= booking.id %>/cancel" target="_tab" class="btn btn-outline-danger mt-2">Cancel Booking</a>
+        <a href="/booking/<%= booking.id %>/cancel" class="btn btn-outline-danger mt-2">Cancel Booking</a>
     <% } %>
 </div>
 

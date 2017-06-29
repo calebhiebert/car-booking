@@ -46,7 +46,8 @@ function init() {
             Vehicle = sequelize.define('vehicle', {
                 vid: {
                     type: Sequelize.INTEGER,
-                    primaryKey: true
+                    primaryKey: true,
+                    notNull: true
                 },
                 name: {
                     type: Sequelize.STRING,
@@ -60,9 +61,8 @@ function init() {
                     type: Sequelize.INTEGER,
                     notNull: true
                 },
-                isAdmin: {
-                    type: Sequelize.BOOLEAN,
-                    notNull: true
+                notes: {
+                    type: Sequelize.STRING
                 }
             });
 

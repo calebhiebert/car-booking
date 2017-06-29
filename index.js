@@ -102,19 +102,21 @@ app.use(async (req, res, next) => {
 app.use(async (req, res, next) => {
     if(req.session.tokens) {
 
-        const usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName } });
+        let usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName }, raw: true });
 
         if (usr === undefined || usr === null) {
-            const usr = req.session.userCache;
+            const usrCache = req.session.userCache;
 
-            const newUser = await crud.User.create({
-                resourceName: usr.resourceName,
-                email: usr.email,
-                name: usr.name
+            await crud.User.create({
+                resourceName: usrCache.resourceName,
+                email: usrCache.email,
+                name: usrCache.name
             });
 
+            usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName }, raw: true});
+
             console.log('[User %s (%s) logged in for the first time]',
-                newUser.name, newUser.email);
+                usr.name, usr.email);
         }
 
         req.session.user = usr;
@@ -194,7 +196,7 @@ app.get('/setlang/:lang', (req, res) => {
 });
 
 app.get('/dash', async (req, res) => {
-    let testBookings = await crud.Booking.findAll({
+    let bookings = await crud.Booking.findAll({
         include: [crud.User, crud.Vehicle],
 
         where: {
@@ -203,19 +205,17 @@ app.get('/dash', async (req, res) => {
         }
     });
 
-    console.log(testBookings);
-
     let visData = [];
 
-    for (let booking of testBookings) {
+    for (let booking of bookings) {
 
         booking.startTime = moment(booking.startTime).tz(TZ);
         booking.returnTime = moment(booking.returnTime).tz(TZ);
 
-        visData.push({id: booking.id, start: booking.startTime, end: booking.returnTime, content: (booking.name + ' (' + booking.email + ') with ' + booking.vehicle.name)})
+        visData.push({id: booking.id, start: booking.startTime, end: booking.returnTime, content: (booking.user.name + ' (' + booking.user.email + ') with ' + booking.vehicle.name)})
     }
 
-    res.render('dash', {bookings: testBookings, visData});
+    res.render('dash', {bookings: bookings, visData});
 });
 
 app.get('/no_cars', async (req, res) => {
@@ -239,21 +239,17 @@ app.get('/accept_booking', async (req, res) => {
         res.send('You do not have a booking proposal to accept!');
     } else {
         let booking = req.session.proposedBooking;
-
         let valid = await Promise.resolve(processBooking(booking));
 
         if(valid.valid) {
+            let result = await saveBooking(booking);
 
-            let result = await Promise.resolve(saveBooking(booking));
-            let bookingId = result.stmt.lastID;
-
-            //sendEmail(booking, req.session.user.email);
+            // sendEmail(booking, req.session.user.email);
 
             const cal = await createCalendarEvent(booking, req.session.tokens);
 
-            const dbBooking = crud.Booking.findById(bookingId);
-
-            let dbUpdate = await Promise.resolve(db2.run('UPDATE bookings SET calendarId = ? WHERE rowid = ?', cal.id, bookingId));
+            result.calendarId = cal.id;
+            result.save();
 
             console.log('[Successfully added booking for %s to their calendar. id %s]',
                 req.session.user.email, cal.id);
@@ -299,12 +295,12 @@ app.post('/create_booking', async (req, res) => {
     delete req.session.proposedBooking;
 
     let booking = req.session.bookingRequest = req.body;
-    booking.user = req.session.userCache.resourceName;
+    booking.user = req.session.user;
     
     let validation = basicBookingValidation(booking);
 
-    if(validation.valid) {
-        let result = await Promise.resolve(processBooking(booking));
+    if(validation.error === null) {
+        let result = await processBooking(booking);
 
         if (result.valid) {
             req.session.proposedBooking = result.proposedBooking;
@@ -313,7 +309,11 @@ app.post('/create_booking', async (req, res) => {
             res.redirect('/no_cars');
         }
     } else {
-        res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation })
+        let details = validation.error.details[0];
+        let errMsg = {};
+        errMsg[details.path] = details.message;
+
+        res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation: errMsg })
     }
 });
 
@@ -399,12 +399,9 @@ app.get('/grant_admin', async (req, res) => {
 });
 
 app.get('/booking/:id', async (req, res) => {
-    const booking = await Promise.resolve(db2.get('SELECT rowid AS id, function, num_of_people, start_time, return_time, reason, notes, user, vehicle, calendarId FROM bookings WHERE bookings.rowid = ?', req.params.id));
+    const booking = await crud.Booking.findOne({ where: { id: req.params.id }, include: [crud.User, crud.Vehicle] });
 
     if(booking !== undefined) {
-        booking.vehicle = await Promise.resolve(db2.get('SELECT vid, name, type, num_seats AS numSeats, notes FROM vehicles WHERE vid = ?', booking.vehicle));
-        booking.user = await Promise.resolve(db2.get('SELECT resource_name, email, name FROM users WHERE resource_name = ?', booking.user));
-
         try {
             const cal = await Promise.resolve(goog.calendar.getCalendarEvent({
                 calendarId: 'primary',
@@ -423,32 +420,33 @@ app.get('/booking/:id', async (req, res) => {
 });
 
 app.get('/booking/:id/cancel', async(req, res) => {
-    const booking = await Promise.resolve(db2.get('SELECT function, num_of_people, start_time, return_time, reason, notes, user, vehicle, calendarId FROM bookings WHERE bookings.rowid = ?', req.params.id));
+    const booking = await crud.Booking.findOne({ where: { id: req.params.id }, include: [crud.User, crud.Vehicle] });
 
-    if(booking === undefined) {
+    if(booking === null) {
         res.redirect('/');
     } else {
-        const bookingName = await Promise.resolve(db2.get('SELECT name, email FROM users WHERE resource_name = ?', booking.user));
+        if (req.session.user.isAdmin || req.session.user.resourceName === booking.user.resourceName) {
+            let data = {name: booking.user.name, email: booking.user.email, time: booking.startTime, calId: booking.calendarId};
 
-        if (req.session.user.isAdmin || req.session.user.resource_name === booking.user) {
             try {
-                const dbDelete = await Promise.resolve(db2.run('DELETE FROM bookings WHERE rowid = ?', req.params.id));
+                await booking.destroy();
+
                 const caDelete = await Promise.resolve(goog.calendar.deleteCalendarEvent({
                     calendarId: 'primary',
-                    eventId: id
-                }));
+                    eventId: data.calId
+                }, req.session.tokens));
             } catch (err) {
                 if(err.code !== undefined && err.code === 410) {
                     console.log('[Tried to delete the calendar entry for %s\'s booking, but it was already deleted]',
-                        bookingName.name);
+                        booking.user.name);
                 } else {
                     console.log('[Encountered an unexpected error (code %s) while trying to delete a calendar event]', err.code);
                 }
             }
 
             console.log('[User %s (%s) removed %s\'s (%s) booking for %s]',
-                req.session.user.name, req.session.user.email, bookingName.name,
-                bookingName.email, moment.tz(booking.start_time, TZ).format('LLL'));
+                req.session.user.name, req.session.user.email, data.name,
+                data.email, moment.tz(data.time, TZ).format('LLL'));
 
             res.redirect('/');
         }
@@ -517,8 +515,16 @@ async function createCalendarEvent(booking, userToken) {
 
 // save a booking to the database
 async function saveBooking(booking) {
-    return await Promise.resolve(db2.prepare('INSERT INTO bookings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'))
-        .then(stmt => stmt.run([booking.user, booking.function, booking.numPeople, booking.pickup, booking.return, booking.reason, booking.notes, booking.vehicle.vid, null]));
+    return await crud.Booking.create({
+        function: booking.function,
+        numPeople: booking.numPeople,
+        startTime: booking.pickup,
+        returnTime: booking.return,
+        reason: booking.reason,
+        notes: booking.notes,
+        userResourceName: booking.user.resourceName,
+        vehicleVid: booking.vehicle.vid
+    });
 }
 
 function validateVehicle(vehicle) {
@@ -544,10 +550,7 @@ function basicBookingValidation(booking) {
         reason: Joi.string().min(3).required()
     });
 
-    const validation = Joi.validate(booking, schema);
-    console.log(validation);
-
-    return Joi.validate(booking, schema);
+    return Joi.validate(booking, schema, { allowUnknown: true });
 
     // if(startDateValid === undefined && returnDateValid === undefined && startTimeValid === undefined && returnTimeValid === undefined) {
     //     let startTime = moment.tz(booking.startDate + ' ' + booking.startTime, TZ);
@@ -602,26 +605,20 @@ async function processBooking(booking) {
     booking.pickup = requestedStart.format();
     booking.return = requestedReturn.format();
 
-    const bookings = await Promise.resolve(db2.all('SELECT * FROM bookings'));
+    const bookings = await crud.Booking.findAll();
 
     let busyVehicles = [];
 
     for (let booking of bookings) {
-        let bookingStart = moment.tz(booking.start_time, TZ);
-        let bookingReturn = moment.tz(booking.return_time, TZ);
+        let bookingStart = moment.tz(booking.startTime, TZ);
+        let bookingReturn = moment.tz(booking.returnTime, TZ);
 
         if(requestedStart.isBetween(bookingStart, bookingReturn, null, '(]') || bookingStart.isBetween(requestedStart, requestedReturn, null, '[]')) {
             busyVehicles.push(booking.vehicle);
         }
     }
 
-    let paramsQs = '';
-
-    for(let i = 0; i < busyVehicles.length; i++)
-        i === 0 ? paramsQs += '?' : paramsQs += ', ?';
-
-    const availableVehicles = await Promise.resolve(db2.prepare('SELECT vid, name, num_seats AS numSeats, notes FROM vehicles WHERE vid NOT IN (' + paramsQs + ') ORDER BY num_seats ASC'))
-        .then(stmt => stmt.all(busyVehicles));
+    const availableVehicles = await crud.Vehicle.findAll({ where: { vid: { $notIn: busyVehicles } }, order: [['numSeats', 'ASC']] });
 
     let optimalVehicle = null;
 
@@ -637,7 +634,16 @@ async function processBooking(booking) {
         //TODO check if something is available with less seats
         return { valid: false };
     } else {
-        let proposedBooking = { user: booking.user, function: booking.function, numPeople: booking.numPeople, pickup: booking.pickup, return: booking.return, reason: booking.reason, notes: booking.notes, vehicle: optimalVehicle };
+        let proposedBooking = {
+            user: booking.user,
+            function: booking.function,
+            numPeople: booking.numPeople,
+            pickup: booking.pickup,
+            return: booking.return,
+            reason: booking.reason,
+            notes: booking.notes,
+            vehicle: optimalVehicle
+        };
 
         return { valid: true, proposedBooking };
     }
@@ -664,24 +670,6 @@ function sendEmail(booking, email) {
         console.log(err);
         console.log(info);
     });
-}
-
-function generateCalendar(booking) {
-    let cal = ical({
-        domain: 'piikl.com',
-        events: [
-            {
-                start: moment(booking.unixStartTime * 1000).format('LLL'),
-                end: moment(booking.unixReturnTime * 1000).format('LLL'),
-                summary: 'Car Booking',
-                description: 'You have booked ' + booking.vehicle.name,
-                location: 'Millenium Library parkade',
-                organizer: 'Car Booker <carbooker@piikl.com>'
-            }
-        ]
-    });
-
-    return cal;
 }
 
 function wipeTokens(session) {

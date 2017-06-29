@@ -285,8 +285,10 @@ app.get('/logout', async (req, res) => {
     res.redirect('/');
 });
 
-app.get('/create_booking', (req, res) => {
-    res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation: {} });
+app.get('/create_booking', async (req, res) => {
+    const vehicleTypes = await crud.Vehicle.aggregate('type', 'DISTINCT', { plain: false });
+
+    res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation: {}, vehicleTypes });
 });
 
 app.post('/create_booking', async (req, res) => {
@@ -340,10 +342,10 @@ app.get('/edit_vehicle/:id', async (req, res) => {
 app.post('/add_vehicle', async (req, res) => {
     let vehicle = {
         vid: req.body.vid,
-        name: req.body.name,
-        type: req.body.type,
+        name: req.body.name.trim(),
+        type: req.body.type.trim().toLowerCase(),
         numSeats: req.body.numSeats,
-        notes: req.body.notes
+        notes: req.body.notes.trim()
     };
 
     const validation = validateVehicle(vehicle);

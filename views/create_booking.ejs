@@ -59,6 +59,17 @@
                     <span class="form-control-feedback"><%= validation.reason %></span>
                 </fieldset>
 
+                <fieldset class="form-group<%= validation.typeRequest != undefined ? 'has-danger' : '' %>">
+                    <label for="typeRequest">Request a specific type of vehicle</label>
+                    <select id="typeRequest" class="form-control" name="typeRequest">
+                        <option value="none">none</option>
+                        <% for (let type of vehicleTypes) { %>
+                            <option value="<%= type.DISTINCT %>"><%= type.DISTINCT %></option>
+                        <% } %>
+                    </select>
+                    <span class="form-control-feedback"><%= validation.typeRequest %></span>
+                </fieldset>
+
                 <fieldset class="form-group">
                     <label for="notes">Additional information</label>
                     <input id="notes" name="notes" class="form-control" type="text" value="<%= bookingRequest.notes %>">

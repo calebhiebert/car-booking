@@ -23,10 +23,7 @@
 
                 <fieldset class="form-group<%= validation.type != undefined ? ' has-danger' : '' %>">
                     <label for="car_type">Vehicle Type</label>
-                    <select id="car_type" name="type" class="form-control">
-                        <option value="car" <%= input.type !== undefined ? input.type == 'car' ? 'selected' : '' : '' %>>Car</option>
-                        <option value="van" <%= input.type !== undefined ? input.type == 'van' ? 'selected' : '' : '' %>>Van</option>
-                    </select>
+                    <input id="car_type" type="text" name="type" class="form-control" value="<%= input.type %>" placeholder="bus">
                 </fieldset>
 
                 <fieldset class="form-group<%= validation.numSeats != undefined ? ' has-danger' : '' %>">

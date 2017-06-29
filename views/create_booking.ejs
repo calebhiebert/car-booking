@@ -5,6 +5,7 @@
     <% include head.ejs %>
     <link rel="stylesheet" href="/jquery.timepicker.css">
     <link rel="stylesheet" href="/bootstrap-datepicker3.standalone.min.css">
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/timepicker/1.3.5/jquery.timepicker.min.css">
 </head>
 <body>
 <% include nav.ejs %>
@@ -29,25 +30,25 @@
                 <div id="daterange">
                     <fieldset class="form-group<%= validation.startDate != undefined ? ' has-danger' : '' %>">
                         <label for="startDate">Date that you will be needing the vehicle</label>
-                        <input id="startDate" name="startDate" class="form-control date start" type="text" value="<%= (bookingRequest.startDate || moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD'))  %>" >
+                        <input id="startDate" name="startDate" class="form-control date start" type="text" value="<%= ((bookingRequest.startDate !== undefined ? moment.tz(bookingRequest.startDate, TZ).format('YYYY-MM-DD') : moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD')))  %>" >
                         <span class="form-control-feedback"><%= validation.startDate %></span>
                     </fieldset>
 
                     <fieldset class="form-group<%= validation.returnDate != undefined ? ' has-danger' : '' %>">
                         <label for="returnDate">Return date of the vehicle</label>
-                        <input id="returnDate" name="returnDate" class="form-control date end" type="text" value="<%= (bookingRequest.returnDate || moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD')) %>" >
+                        <input id="returnDate" name="returnDate" class="form-control date end" type="text" value="<%= ((bookingRequest.returnDate !== undefined ? moment.tz(bookingRequest.returnDate, TZ).format('YYYY-MM-DD') : moment().add(1, 'day').tz(TZ).format('YYYY-MM-DD'))) %>" >
                         <span class="form-control-feedback"><%= validation.returnDate %></span>
                     </fieldset>
 
                     <fieldset class="form-group time<%= validation.startTime != undefined ? ' has-danger' : '' %>">
                         <label for="startTime">Start Time</label>
-                        <input id="startTime" name="startTime" class="form-control time start" type="text" value="<%= bookingRequest.startTime !== undefined ? moment(bookingRequest.startDate + ' ' + bookingRequest.startTime).format('HH:mm') : '' %>" >
+                        <input id="startTime" name="startTime" class="form-control time start" type="text" value="<%= (bookingRequest.startTime !== undefined && bookingRequest.startTime !== '') ? moment.tz(bookingRequest.startTime, TZ).format('h:mm A') : '' %>">
                         <span class="form-control-feedback"><%= validation.startTime %></span>
                     </fieldset>
 
                     <fieldset class="form-group time<%= validation.returnTime != undefined ? ' has-danger' : '' %>">
                         <label for="returnTime">Return Time</label>
-                        <input id="returnTime" name="returnTime" class="form-control time end" type="text" value="<%= bookingRequest.startTime !== undefined ? moment(bookingRequest.returnDate + ' ' + bookingRequest.returnTime).format('HH:mm') : '' %>" >
+                        <input id="returnTime" name="returnTime" class="form-control time end" type="text" value="<%= (bookingRequest.returnTime !== undefined && bookingRequest.returnTime !== '') ? moment.tz(bookingRequest.returnTime, TZ).format('h:mm A') : '' %>" >
                         <span class="form-control-feedback"><%= validation.returnTime %></span>
                     </fieldset>
                 </div>
@@ -69,21 +70,47 @@
     </div>
 </div>
 <% include scripts.ejs %>
-<script src="/jquery.timepicker.min.js"></script>
-<script src="/datepair.min.js"></script>
 <script src="/bootstrap-datepicker.min.js"></script>
 <script src="/jquery.datepair.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/timepicker/1.3.5/jquery.timepicker.min.js"></script>
+<script src="http://momentjs.com/downloads/moment.js"></script>
+<script src="https://momentjs.com/downloads/moment-timezone-with-data-2012-2022.min.js"></script>
 <script>
     $('#daterange .date').datepicker({
-        format: 'yyyy-m-d',
+        format: 'yyyy-mm-dd',
         autoclose: true
     });
 
-    $('#daterange .time').timepicker({
-        'timeFormat': 'g:ia'
+    $('#startTime').timepicker({
+        timeFormat: 'h:mm p',
+        interval: 30,
+        minTime: '00:00',
+        maxTime: '23:59',
+        startTime: '7:00 AM',
+        dynamic: false,
+        dropdown: true,
+        scrollbar: false
     });
 
-    $('#daterange').datepair();
+    $('#returnTime').timepicker({
+        timeFormat: 'h:mm p',
+        interval: 30,
+        minTime: '00:00',
+        maxTime: '23:59',
+        startTime: '7:00 AM',
+        dynamic: false,
+        dropdown: true,
+        scrollbar: false
+    });
+
+    $('#daterange').datepair({
+        parseTime(el) {
+            return moment.tz($(el).val(), 'h:mm A', '<%= TZ %>').toDate();
+        },
+        parseDate(el) {
+            return moment.tz($(el).val(), 'YYYY-MM-DD', '<%= TZ %>').toDate();
+        }
+    });
 </script>
 </body>
 </html>

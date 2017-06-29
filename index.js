@@ -294,7 +294,7 @@ app.post('/create_booking', async (req, res) => {
 
     let booking = req.session.bookingRequest = req.body;
     booking.user = req.session.user;
-    
+
     let validation = basicBookingValidation(booking);
 
     if(validation.error === null) {
@@ -307,9 +307,8 @@ app.post('/create_booking', async (req, res) => {
             res.redirect('/no_cars');
         }
     } else {
-        let details = validation.error.details[0];
         let errMsg = {};
-        errMsg[details.path] = details.message;
+        errMsg[validation.error.path] = validation.error.message;
 
         res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation: errMsg })
     }
@@ -541,64 +540,95 @@ function basicBookingValidation(booking) {
     const schema = Joi.object().keys({
         function: Joi.string().min(3).max(60).required(),
         numPeople: Joi.number().min(1).required(),
-        startDate: Joi.string().required(),
-        returnDate: Joi.string().required(),
-        startTime: Joi.string().required(),
-        returnTime: Joi.string().required(),
+        startDate: Joi.any().required(),
+        returnDate: Joi.any().required(),
+        startTime: Joi.any().required(),
+        returnTime: Joi.any().required(),
         reason: Joi.string().min(3).required()
     });
 
-    return Joi.validate(booking, schema, { allowUnknown: true });
+    jErr = Joi.validate(booking, schema, { allowUnknown: true });
 
-    // if(startDateValid === undefined && returnDateValid === undefined && startTimeValid === undefined && returnTimeValid === undefined) {
-    //     let startTime = moment.tz(booking.startDate + ' ' + booking.startTime, TZ);
-    //     let returnTime = moment.tz(booking.returnDate + ' ' + booking.returnTime, TZ);
-    //
-    //     let now = moment().tz(TZ);
-    //
-    //     if(startTime.isSameOrBefore(now, 'minutes')) {
-    //         validation.startDate = 'The date cannot be in the past';
-    //     } else if (returnTime.isSameOrBefore(now, 'minutes')) {
-    //         validation.returnDate = 'The date cannot be in the past';
-    //     }
-    //
-    //     let diff = returnTime.diff(startTime, 'minutes');
-    //
-    //     if(diff < 0) {
-    //         validation.startTime = 'Start time cannot be after return time';
-    //     } else if (diff < 30) {
-    //         validation.returnTime = 'The minimum booking time is 30 minutes';
-    //     }
-    // }
+    if(jErr.error !== null) {
+        return niceifyJOIErrors(jErr.error);
+    }
 
-    // reasonValid = validateText(booking.reason);
-    // if(reasonValid !== undefined)
-    //     validation.reason = reasonValid;
-    //
-    // if(Object.keys(validation).length > 1) {
-    //     validation.valid = false;
-    // }
-    //
-    // return validation;
+    booking.startTime = moment.tz(booking.startTime, 'h:mm A', TZ);
+    booking.returnTime = moment.tz(booking.returnTime, 'h:mm A', TZ);
+
+    booking.startDate = moment.tz(booking.startDate, 'YYYY-MM-DD', TZ);
+    booking.returnDate = moment.tz(booking.returnDate, 'YYYY-MM-DD', TZ);
+
+    let error = {
+        error: undefined
+    };
+
+    if(!booking.startTime.isValid()) {
+        error.error.path = 'startTime';
+        error.error.message = 'Please submit a valid time';
+        return error;
+    }
+
+    if(!booking.returnTime.isValid()) {
+        error.error.path = 'returnTime';
+        error.error.message = 'Please submit a valid time';
+        return error;
+    }
+
+    if(!booking.startDate.isValid()) {
+        error.error.path = 'startDate';
+        error.error.message = 'Please submit a valid date';
+        return error;
+    }
+
+    if(!booking.returnDate.isValid()) {
+        error.error.path = 'returnDate';
+        error.error.message = 'Please submit a valid date';
+        return error;
+    }
+
+    booking.pickup = moment.tz((booking.startDate.format('YYYY-MM-DD') + ' ' + booking.startTime.format('HH:mm')), 'YYYY-MM-DD HH:mm', TZ);
+    booking.return = moment.tz((booking.returnDate.format('YYYY-MM-DD') + ' ' + booking.returnTime.format('HH:mm')), 'YYYY-MM-DD HH:mm', TZ);
+
+    let now = moment().tz(TZ);
+
+    if(booking.pickup.isSameOrBefore(now, 'minutes')) {
+        error.error.path = 'startDate';
+        error.error.message = 'The start date cannot be in the past';
+        return error;
+    }
+
+    if(booking.return.isSameOrBefore(now, 'minutes')) {
+        error.error.path = 'returnDate';
+        error.error.message = 'The return date cannot be in the past';
+        return error;
+    }
+
+    let diff = booking.return.diff(booking.pickup, 'minutes');
+
+    if(diff < 0) {
+        error.error.path = 'returnTime';
+        error.error.message = 'The return time cannot be before the start time';
+        return error;
+    } else if (diff < 30) {
+        return {error: {path: 'returnTime', message: 'The minimum booking time is 30 minutes'}};
+    }
+
+    return {error: null};
+}
+
+function niceifyJOIErrors(joiError) {
+    return {
+        error: {path: joiError.details[0].path, message: joiError.details[0].message}
+    }
+
 }
 
 // process a booking object
 async function processBooking(booking) {
 
-    let requestedStart;
-    let requestedReturn;
-
-    if(booking.pickup !== undefined)
-        requestedStart = moment.tz(booking.pickup, TZ);
-
-    if(booking.return !== undefined)
-        requestedReturn = moment.tz(booking.return, TZ);
-
-    if(booking.startDate !== undefined && booking.startTime !== undefined)
-        requestedStart = moment.tz(booking.startDate + ' ' + booking.startTime, TZ);
-
-    if(booking.returnDate !== undefined && booking.returnTime !== undefined)
-        requestedReturn = moment.tz(booking.returnDate + ' ' + booking.returnTime, TZ);
+    let requestedStart = moment.tz(booking.pickup, TZ);
+    let requestedReturn = moment.tz(booking.return, TZ);
 
     booking.pickup = requestedStart.format();
     booking.return = requestedReturn.format();

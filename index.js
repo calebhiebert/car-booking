@@ -18,30 +18,17 @@ const session = require('express-session');
 const sqstore = require('connect-sqlite3')(session);
 const moment = require('moment-timezone');
 const Promise = require('bluebird');
-const nodemailer = require('nodemailer');
-const mg = require('nodemailer-mailgun-transport');
 const ical = require('ical-generator');
 const Joi = require('joi');
 
 const localizer = require('./localizer');
 const goog = require('./googlestuff');
 const crud = require('./crud');
+const mailer = require('./mailer');
 
 let prod = process.argv[2] === 'prod';
 
 goog.init(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, prod ? PROD_REDIRECT_URL : GOOGLE_REDIRECT_URL);
-
-//TODO make a module to deal with email stuff
-//const mail = require('./mailer');
-
-const mailgunAuth = {
-    auth: {
-        api_key: MAILGUN_API_KEY,
-        domain: MAILGUN_DOMAIN
-    }
-};
-
-const mailTransporter = nodemailer.createTransport(mg(mailgunAuth));
 
 // set settings
 app.set('view engine', 'ejs');
@@ -139,7 +126,6 @@ app.use(async (req, res, next) => {
     next();
 });
 
-// Check admin paths
 app.use(async (req, res, next) => {
     const adminPaths = ['/admin', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
     const path = req.path;
@@ -157,7 +143,6 @@ app.use(async (req, res, next) => {
     }
 });
 
-// Check Authed Pages
 app.use(async (req, res, next) => {
     const authedPaths = ['/dash', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
     const path = req.path;
@@ -255,12 +240,15 @@ app.get('/accept_booking', async (req, res) => {
             req.session.user.name, req.session.user.email,
             bk.vehicle.name, bk.pickup, bk.return);
 
-        const cal = await createCalendarEvent(bk, req.session.tokens);
+        await mailer.send.creationNotice(bk);
+        console.log('[Sent email to %s]', bk.user.email);
 
+        const cal = await createCalendarEvent(bk, req.session.tokens);
         bk.calendarId = cal.id;
         bk.save();
         console.log('[Successfully added booking for %s to their calendar. id %s]',
             req.session.user.email, cal.id);
+
         res.redirect('/');
     }
 });
@@ -489,7 +477,6 @@ app.get('/booking/:id/cancel', async(req, res) => {
 /**
  * BEGIN APP INITIALIZATION
  */
-
 Promise.resolve()
     .then(crud.init())
     .then(() => console.log('[Loaded Database]'))
@@ -497,6 +484,8 @@ Promise.resolve()
     .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
     .then(() => setInterval(cleanExpiredBookings, 1000*60))
     .then(() => cleanExpiredBookings())
+    .then(() => mailer.init(MAILGUN_API_KEY, MAILGUN_DOMAIN, TZ, crud))
+    .then(() => console.log('[Started mailing engines]'))
     .then(() => startServer())
     .then(() => console.log('[Server started on port %s]', PORT))
     .catch(err => console.log(err));
@@ -539,20 +528,6 @@ async function createCalendarEvent(booking, userToken) {
         }, userToken)
     )
         .catch(err => console.log(err));
-}
-
-// save a booking to the database
-async function saveBooking(booking) {
-    return await crud.Booking.create({
-        function: booking.function,
-        numPeople: booking.numPeople,
-        startTime: booking.pickup,
-        returnTime: booking.return,
-        reason: booking.reason,
-        notes: booking.notes,
-        userResourceName: booking.user.resourceName,
-        vehicleVid: booking.vehicle.vid
-    });
 }
 
 function validateVehicle(vehicle) {
@@ -655,7 +630,6 @@ function niceifyJOIErrors(joiError) {
     return {
         error: {path: joiError.details[0].path, message: joiError.details[0].message}
     }
-
 }
 
 // process a booking object
@@ -668,7 +642,8 @@ async function processBooking(booking) {
             status: {
                 $in: ['ACTIVE', 'RESERVED']
             }
-        }
+        },
+        include: [ crud.User, crud.Vehicle ]
     });
 
     let busyVehicles = [];
@@ -678,7 +653,7 @@ async function processBooking(booking) {
         let bookingReturn = moment.tz(booking.returnTime, TZ);
 
         if(requestedStart.isBetween(bookingStart, bookingReturn, null, '(]') || bookingStart.isBetween(requestedStart, requestedReturn, null, '[]')) {
-            busyVehicles.push(booking.vehicle);
+            busyVehicles.push(booking.vehicle.vid);
         }
     }
 
@@ -716,29 +691,6 @@ async function processBooking(booking) {
 
         return { valid: true, proposedBooking };
     }
-}
-
-function sendEmail(booking, email) {
-    let cal = generateCalendar(booking);
-
-    let mailOptions = {
-        from: '"Car Booker", <calebkhiebert@gmail.com>',
-        to: booking.name + ' <' + email + '>',
-        subject: 'Car Booking',
-        text: 'This is your car booking event',
-        html: '',
-        attachments: [
-            {
-                filename: 'booking.ics',
-                content: cal.toString()
-            }
-        ]
-    };
-
-    mailTransporter.sendMail(mailOptions, (err, info) => {
-        console.log(err);
-        console.log(info);
-    });
 }
 
 function wipeTokens(session) {

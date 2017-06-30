@@ -6,6 +6,7 @@ const GOOGLE_CLIENT_ID = '801316837381-7d1vd6bi6v3c2do02tdqlis0i5b7dsdi.apps.goo
 const GOOGLE_CLIENT_SECRET = 'IgJsH0JuizQLXxrrTQEWGU0x';
 const GOOGLE_REDIRECT_URL = 'http://localhost/auth';
 const PROD_REDIRECT_URL = 'https://booker.luigi.piikl.com/auth';
+const BOOKING_EXPIRY_MINS = 10;
 
 // Import modules
 const express = require('express');
@@ -65,6 +66,7 @@ app.use(session({
 app.locals = {
     moment,
     GOOGLE_CLIENT_ID,
+    BOOKING_EXPIRY_MINS,
     TZ,
     genAuthUrl: goog.genAuthUrl
 };
@@ -199,7 +201,8 @@ app.get('/dash', async (req, res) => {
 
         where: {
             startTime: { $gte: moment().tz(TZ).unix() },
-            returnTime: { $gte: moment().tz(TZ).unix() }
+            returnTime: { $gte: moment().tz(TZ).unix() },
+            status: 'ACTIVE'
         }
     });
 
@@ -225,45 +228,40 @@ app.get('/no_cars', async (req, res) => {
 });
 
 app.get('/booking_proposal', async (req, res) => {
-    if(req.session.proposedBooking === undefined) {
+    const bk = await crud.Booking.findOne({ include: [ crud.User, crud.Vehicle ], where: { userResourceName: req.session.user.resourceName, status: 'RESERVED' } });
+
+    if(bk === null) {
         res.redirect('/dash');
     } else {
-        res.render('booking_proposal', { booking: req.session.proposedBooking });
+        res.render('booking_proposal', { booking: bk });
     }
 });
 
 app.get('/accept_booking', async (req, res) => {
-    if(req.session.proposedBooking === undefined) {
-        res.send('You do not have a booking proposal to accept!');
+    const bk = await crud.Booking.findOne({
+        where: {
+            userResourceName: req.session.user.resourceName,
+            status: 'RESERVED'
+        },
+        include: [ crud.User, crud.Vehicle ]
+    });
+
+    if(bk === null) {
+        res.redirect('/');
     } else {
-        let booking = req.session.proposedBooking;
-        let valid = await Promise.resolve(processBooking(booking));
+        bk.status = 'ACTIVE';
+        await bk.save();
+        console.log('[User %s (%s) Created a booking for %s from %s to %s]',
+            req.session.user.name, req.session.user.email,
+            bk.vehicle.name, bk.pickup, bk.return);
 
-        if(valid.valid) {
-            let result = await saveBooking(booking);
+        const cal = await createCalendarEvent(bk, req.session.tokens);
 
-            // sendEmail(booking, req.session.user.email);
-
-            const cal = await createCalendarEvent(booking, req.session.tokens);
-
-            result.calendarId = cal.id;
-            result.save();
-
-            console.log('[Successfully added booking for %s to their calendar. id %s]',
-                req.session.user.email, cal.id);
-
-            delete req.session.proposedBooking;
-            delete req.session.bookingRequest;
-
-            console.log('[User %s (%s) Created a booking for %s from %s to %s]',
-                req.session.user.name, req.session.user.email,
-                booking.vehicle.name, booking.pickup, booking.return);
-
-            res.redirect('/dash');
-
-        } else {
-            res.send('You took too long to accept this booking, it is no longer valid!');
-        }
+        bk.calendarId = cal.id;
+        bk.save();
+        console.log('[Successfully added booking for %s to their calendar. id %s]',
+            req.session.user.email, cal.id);
+        res.redirect('/');
     }
 });
 
@@ -286,33 +284,65 @@ app.get('/logout', async (req, res) => {
 });
 
 app.get('/create_booking', async (req, res) => {
-    const vehicleTypes = await crud.Vehicle.aggregate('type', 'DISTINCT', { plain: false });
+    const bk = await crud.Booking.findOne({ where: { userResourceName: req.session.user.resourceName, status: 'RESERVED' } });
 
-    res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation: {}, vehicleTypes });
+    if(bk === null) {
+        const vehicleTypes = await crud.Vehicle.aggregate('type', 'DISTINCT', {plain: false});
+        res.render('create_booking', {bookingRequest: req.session.bookingRequest || {}, validation: {}, vehicleTypes});
+    } else {
+        res.redirect('/booking_proposal')
+    }
 });
 
 app.post('/create_booking', async (req, res) => {
-    delete req.session.proposedBooking;
+    const bk = await crud.Booking.findOne({ where: { userResourceName: req.session.user.resourceName, status: 'RESERVED' } });
 
-    let booking = req.session.bookingRequest = req.body;
-    booking.user = req.session.user;
-
-    let validation = basicBookingValidation(booking);
-
-    if(validation.error === null) {
-        let result = await processBooking(booking);
-
-        if (result.valid) {
-            req.session.proposedBooking = result.proposedBooking;
-            res.redirect('/booking_proposal');
-        } else {
-            res.redirect('/no_cars');
-        }
+    if(bk !== null) {
+        res.redirect('/booking_proposal');
     } else {
-        let errMsg = {};
-        errMsg[validation.error.path] = validation.error.message;
 
-        res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, validation: errMsg })
+        const booking = {
+            function: req.body.function,
+            numPeople: req.body.numPeople,
+            startDate: req.body.startDate,
+            returnDate: req.body.returnDate,
+            startTime: req.body.startTime,
+            returnTime: req.body.returnTime,
+            reason: req.body.reason,
+            typeRequest: req.body.typeRequest,
+            notes: req.body.notes
+        };
+
+        req.session.bookingRequest = booking;
+
+        let validation = basicBookingValidation(booking);
+
+        if (validation.error === null) {
+            let bk = await processBooking(booking);
+
+            if (bk.valid) {
+                const newBooking = await crud.Booking.create({
+                    function: bk.proposedBooking.function,
+                    numPeople: bk.proposedBooking.numPeople,
+                    startTime: bk.proposedBooking.pickup,
+                    returnTime: bk.proposedBooking.return,
+                    reason: bk.proposedBooking.reason,
+                    notes: bk.proposedBooking.notes,
+                    userResourceName: req.session.user.resourceName,
+                    vehicleVid: bk.proposedBooking.vehicle.vid,
+                    status: 'RESERVED'
+                });
+
+                res.redirect('/booking_proposal');
+            } else {
+                res.redirect('/no_cars');
+            }
+        } else {
+            let errMsg = {};
+            errMsg[validation.error.path] = validation.error.message;
+
+            res.render('create_booking', {bookingRequest: req.session.bookingRequest || {}, validation: errMsg})
+        }
     }
 });
 
@@ -400,18 +430,22 @@ app.get('/grant_admin', async (req, res) => {
 app.get('/booking/:id', async (req, res) => {
     const booking = await crud.Booking.findOne({ where: { id: req.params.id }, include: [crud.User, crud.Vehicle] });
 
-    if(booking !== undefined) {
-        try {
-            const cal = await Promise.resolve(goog.calendar.getCalendarEvent({
-                calendarId: 'primary',
-                eventId: booking.calendarId
-            }, req.session.tokens));
+    if(booking !== null) {
+        if(booking.status === 'RESERVED') {
+            res.redirect('/booking_proposal');
+        } else {
+            try {
+                const cal = await Promise.resolve(goog.calendar.getCalendarEvent({
+                    calendarId: 'primary',
+                    eventId: booking.calendarId
+                }, req.session.tokens));
 
-            res.render('booking', { booking, event: { calendarUrl: cal.htmlLink } })
+                res.render('booking', {booking, event: {calendarUrl: cal.htmlLink}})
 
-        } catch (err) {
-            console.log(err);
-            res.render('booking', { booking, event: { } });
+            } catch (err) {
+                console.log(err);
+                res.render('booking', {booking, event: {}});
+            }
         }
     } else {
         res.redirect('/');
@@ -419,17 +453,21 @@ app.get('/booking/:id', async (req, res) => {
 });
 
 app.get('/booking/:id/cancel', async(req, res) => {
-    const booking = await crud.Booking.findOne({ where: { id: req.params.id }, include: [crud.User, crud.Vehicle] });
+    const bk = await crud.Booking.findOne({ where: { id: req.params.id }, include: [crud.User, crud.Vehicle] });
 
-    if(booking === null) {
+    if(bk === null) {
         res.redirect('/');
     } else {
-        if (req.session.user.isAdmin || req.session.user.resourceName === booking.user.resourceName) {
-            let data = {name: booking.user.name, email: booking.user.email, time: booking.startTime, calId: booking.calendarId};
+        if (req.session.user.isAdmin || req.session.user.resourceName === bk.user.resourceName) {
+
+            bk.status = 'CANCELLED';
+            await bk.save();
+
+            console.log('[User %s (%s) removed %s\'s (%s) booking for %s]',
+                req.session.user.name, req.session.user.email, bk.user.name,
+                bk.user.email, moment.tz(bk.startTime, TZ).format('LLL'));
 
             try {
-                await booking.destroy();
-
                 const caDelete = await Promise.resolve(goog.calendar.deleteCalendarEvent({
                     calendarId: 'primary',
                     eventId: data.calId
@@ -437,15 +475,11 @@ app.get('/booking/:id/cancel', async(req, res) => {
             } catch (err) {
                 if(err.code !== undefined && err.code === 410) {
                     console.log('[Tried to delete the calendar entry for %s\'s booking, but it was already deleted]',
-                        booking.user.name);
+                        bk.user.name);
                 } else {
                     console.log('[Encountered an unexpected error (code %s) while trying to delete a calendar event]', err.code);
                 }
             }
-
-            console.log('[User %s (%s) removed %s\'s (%s) booking for %s]',
-                req.session.user.name, req.session.user.email, data.name,
-                data.email, moment.tz(data.time, TZ).format('LLL'));
 
             res.redirect('/');
         }
@@ -461,6 +495,8 @@ Promise.resolve()
     .then(() => console.log('[Loaded Database]'))
     .then(() => localizer.load())
     .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
+    .then(() => setInterval(cleanExpiredBookings, 1000*60))
+    .then(() => cleanExpiredBookings())
     .then(() => startServer())
     .then(() => console.log('[Server started on port %s]', PORT))
     .catch(err => console.log(err));
@@ -479,13 +515,6 @@ function startServer() {
             reject(err);
         }
     });
-}
-
-// save a vehicle to the database
-async function saveVehicle(vehicle) {
-   crud.Vehicle
-        .upsert(vehicle)
-        .then(vehicle => console.log(vehicle));
 }
 
 async function createCalendarEvent(booking, userToken) {
@@ -616,6 +645,9 @@ function basicBookingValidation(booking) {
         return {error: {path: 'returnTime', message: 'The minimum booking time is 30 minutes'}};
     }
 
+    booking.pickup = booking.pickup.format();
+    booking.return = booking.return.format();
+
     return {error: null};
 }
 
@@ -628,14 +660,16 @@ function niceifyJOIErrors(joiError) {
 
 // process a booking object
 async function processBooking(booking) {
-
     let requestedStart = moment.tz(booking.pickup, TZ);
     let requestedReturn = moment.tz(booking.return, TZ);
 
-    booking.pickup = requestedStart.format();
-    booking.return = requestedReturn.format();
-
-    const bookings = await crud.Booking.findAll();
+    const bookings = await crud.Booking.findAll({
+        where: {
+            status: {
+                $in: ['ACTIVE', 'RESERVED']
+            }
+        }
+    });
 
     let busyVehicles = [];
 
@@ -648,7 +682,13 @@ async function processBooking(booking) {
         }
     }
 
-    const availableVehicles = await crud.Vehicle.findAll({ where: { vid: { $notIn: busyVehicles } }, order: [['numSeats', 'ASC']] });
+    let availableVehicles;
+
+    if(booking.typeRequest !== 'none') {
+        availableVehicles = await crud.Vehicle.findAll({ where: { vid: { $notIn: busyVehicles }, type: booking.typeRequest }, order: [['numSeats', 'ASC']] });
+    } else {
+        availableVehicles = await crud.Vehicle.findAll({ where: { vid: { $notIn: busyVehicles } }, order: [['numSeats', 'ASC']] });
+    }
 
     let optimalVehicle = null;
 
@@ -665,7 +705,6 @@ async function processBooking(booking) {
         return { valid: false };
     } else {
         let proposedBooking = {
-            user: booking.user,
             function: booking.function,
             numPeople: booking.numPeople,
             pickup: booking.pickup,
@@ -716,4 +755,21 @@ function elementStartsWith(arr, value) {
     });
 
     return esw;
+}
+
+async function cleanExpiredBookings() {
+    const bookings = await crud.Booking.findAll({ include: [crud.User], where: { status: 'RESERVED' }});
+
+    for(let booking of bookings) {
+        let bookingCreateTime = moment.tz(booking.createdAt, TZ);
+        let now = moment().tz(TZ);
+
+        console.log(now.diff(bookingCreateTime, 'minutes'));
+
+        if(now.diff(bookingCreateTime, 'minutes') > BOOKING_EXPIRY_MINS) {
+            booking.status = 'EXPIRED';
+            await booking.save();
+            console.log('[%s\'s (%s) Booking expired]', booking.user.name, booking.user.email);
+        }
+    }
 }

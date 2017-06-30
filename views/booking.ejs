@@ -8,9 +8,13 @@
 <% include nav.ejs %>
 
 <div class="container mt-3">
-    <div class="alert alert-info">At this time bookings that have already been created cannot be changed.</div>
+    <% if(booking.status === 'ACTIVE') { %>
+        <div class="alert alert-info">At this time bookings that have already been created cannot be changed.</div>
+    <% } else if (booking.status === 'EXPIRED') { %>
+        <div class="alert alert-warning">This booking has expired</div>
+    <% } %>
 
-    <div class="card pb-3">
+    <div class="card pb-3<%= booking.status === 'EXPIRED' ? ' text-muted' : '' %>">
         <div class="card-block">
             <h3 class="text-center">Booking</h3>
         </div>
@@ -39,12 +43,14 @@
             </div>
         </div>
     </div>
-    <% if (event.calendarUrl !== undefined) { %>
-        <a href="<%= event.calendarUrl %>" target="_blank" class="btn btn-outline-info mt-2">Calendar</a>
-    <% } %>
+    <% if (booking.status === 'ACTIVE') {%>
+        <% if (event.calendarUrl !== undefined) { %>
+            <a href="<%= event.calendarUrl %>" target="_blank" class="btn btn-outline-info mt-2">Calendar</a>
+        <% } %>
 
-    <% if(sess.user.resource_name === booking.user.resource_name || sess.user.is_admin) { %>
-        <a href="/booking/<%= booking.id %>/cancel" class="btn btn-outline-danger mt-2">Cancel Booking</a>
+        <% if(sess.user.resource_name === booking.user.resource_name || sess.user.is_admin) { %>
+            <a href="/booking/<%= booking.id %>/cancel" class="btn btn-outline-danger mt-2">Cancel Booking</a>
+        <% } %>
     <% } %>
 </div>
 

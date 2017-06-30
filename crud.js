@@ -73,26 +73,39 @@ function init() {
                     autoIncrement: true
                 },
                 function: {
-                    type: Sequelize.STRING
+                    type: Sequelize.STRING,
+                    notNull: true
                 },
                 numPeople: {
-                    type: Sequelize.INTEGER
+                    type: Sequelize.INTEGER,
+                    notNull: true
                 },
                 startTime: {
-                    type: Sequelize.STRING
+                    type: Sequelize.STRING,
+                    notNull: true
                 },
                 returnTime: {
-                    type: Sequelize.STRING
+                    type: Sequelize.STRING,
+                    notNull: true
                 },
                 reason: {
-                    type: Sequelize.STRING
+                    type: Sequelize.STRING,
+                    notNull: true
                 },
                 notes: {
                     type: Sequelize.STRING
                 },
                 calendarId: {
                     type: Sequelize.STRING
+                },
+                status: {
+                    type: Sequelize.ENUM,
+                    values: ['ACTIVE', 'RESERVED', 'CANCELLED', 'EXPIRED']
                 }
+            });
+
+            Settings = sequelize.define('setting', {
+
             });
 
             Booking.belongsTo(User);

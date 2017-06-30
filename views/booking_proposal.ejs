@@ -7,6 +7,11 @@
 <body>
 <% include nav.ejs %>
 <div class="container mt-3">
+    <div class="alert alert-info">
+        <strong>Notice!</strong><br/>
+        This booking is not final and will expire at <b><%= moment.tz(booking.createdAt, TZ).add(BOOKING_EXPIRY_MINS, 'minutes').format('LT') %></b>
+        if not accepted.
+    </div>
     <div class="card card-inverse card-success" style="color: white;">
         <div class="text-center">
             <h1>Success!</h1>
@@ -20,38 +25,38 @@
                 </tr>
                 <tr>
                     <th scope="row">Function</th>
-                    <td><%= sess.proposedBooking.function %></td>
+                    <td><%= booking.function %></td>
                 </tr>
                 <tr>
                     <th scope="row"># of People</th>
-                    <td><%= sess.proposedBooking.numPeople %></td>
+                    <td><%= booking.numPeople %></td>
                 </tr>
                 <tr>
                     <th scope="row">Start Time</th>
-                    <td><%= moment(sess.proposedBooking.pickup).tz(TZ).format('LLL') %></td>
+                    <td><%= moment(booking.startTime).tz(TZ).format('LLL') %></td>
                 </tr>
                 <tr>
                     <th scope="row">Return Time</th>
-                    <td><%= moment(sess.proposedBooking.return).tz(TZ).format('LLL') %></td>
+                    <td><%= moment(booking.returnTime).tz(TZ).format('LLL') %></td>
                 </tr>
                 <tr>
                     <th scope="row">Reason</th>
-                    <td><%= sess.proposedBooking.reason %></td>
+                    <td><%= booking.reason %></td>
                 </tr>
-                <% if (sess.proposedBooking.notes.length > 0) { %>
+                <% if (booking.notes > 0) { %>
                     <tr>
                         <th scope="row">Notes</th>
-                        <td><%= sess.proposedBooking.notes %></td>
+                        <td><%= booking.notes %></td>
                     </tr>
                 <% } %>
                 <tr>
                     <th scope="row">Vehicle</th>
-                    <td><%= sess.proposedBooking.vehicle.name + (' (Vehicle ID: ' + sess.proposedBooking.vehicle.vid + ', Seats ' + sess.proposedBooking.vehicle.numSeats + ')') %></td>
+                    <td><%= booking.vehicle.name + (' (Vehicle ID: ' + booking.vehicle.vid + ', Seats ' + booking.vehicle.numSeats + ')') %></td>
                 </tr>
-                <% if (sess.proposedBooking.vehicle.notes.length > 0) { %>
+                <% if (booking.vehicle.notes.length > 0) { %>
                     <tr>
                         <th scope="row">Vehicle Notes</th>
-                        <td><%= sess.proposedBooking.vehicle.notes %></td>
+                        <td><%= booking.vehicle.notes %></td>
                     </tr>
                 <% } %>
             </tbody>

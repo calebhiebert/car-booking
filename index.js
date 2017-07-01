@@ -234,14 +234,15 @@ app.get('/accept_booking', async (req, res) => {
     if(bk === null) {
         res.redirect('/');
     } else {
+
         bk.status = 'ACTIVE';
         await bk.save();
         console.log('[User %s (%s) Created a booking for %s from %s to %s]',
             req.session.user.name, req.session.user.email,
-            bk.vehicle.name, bk.pickup, bk.return);
+            bk.vehicle.name, bk.startTime, bk.returnTime);
 
-        await mailer.send.creationNotice(bk);
-        console.log('[Sent email to %s]', bk.user.email);
+        // await mailer.send.creationNotice(bk);
+        // console.log('[Sent email to %s]', bk.user.email);
 
         const cal = await createCalendarEvent(bk, req.session.tokens);
         bk.calendarId = cal.id;
@@ -447,26 +448,30 @@ app.get('/booking/:id/cancel', async(req, res) => {
         res.redirect('/');
     } else {
         if (req.session.user.isAdmin || req.session.user.resourceName === bk.user.resourceName) {
+            if(bk.status === 'ACTIVE') {
+                bk.status = 'CANCELLED';
+                await bk.save();
 
-            bk.status = 'CANCELLED';
-            await bk.save();
+                console.log('[User %s (%s) removed %s\'s (%s) booking for %s]',
+                    req.session.user.name, req.session.user.email, bk.user.name,
+                    bk.user.email, moment.tz(bk.startTime, TZ).format('LLL'));
 
-            console.log('[User %s (%s) removed %s\'s (%s) booking for %s]',
-                req.session.user.name, req.session.user.email, bk.user.name,
-                bk.user.email, moment.tz(bk.startTime, TZ).format('LLL'));
-
-            try {
-                const caDelete = await Promise.resolve(goog.calendar.deleteCalendarEvent({
-                    calendarId: 'primary',
-                    eventId: data.calId
-                }, req.session.tokens));
-            } catch (err) {
-                if(err.code !== undefined && err.code === 410) {
-                    console.log('[Tried to delete the calendar entry for %s\'s booking, but it was already deleted]',
-                        bk.user.name);
-                } else {
-                    console.log('[Encountered an unexpected error (code %s) while trying to delete a calendar event]', err.code);
+                try {
+                    await goog.calendar.deleteCalendarEvent({
+                        calendarId: 'primary',
+                        eventId: bk.calendarId
+                    }, req.session.tokens);
+                } catch (err) {
+                    if (err.code !== undefined && err.code === 410) {
+                        console.log('[Tried to delete the calendar entry for %s\'s booking, but it was already deleted]',
+                            bk.user.name);
+                    } else {
+                        console.log('[Encountered an unexpected error (code %s) while trying to delete a calendar event]', err.code);
+                    }
                 }
+            } else if (bk.status === 'RESERVED') {
+                bk.status = 'EXPIRED';
+                await bk.save();
             }
 
             res.redirect('/');
@@ -512,19 +517,32 @@ async function createCalendarEvent(booking, userToken) {
         location: 'Parkade',
         description: 'You have booked ' + booking.vehicle.name,
         start: {
-            dateTime: moment.tz(booking.pickup, TZ).format(),
+            dateTime: moment.tz(booking.startTime, TZ).format(),
             timeZone: TZ
         },
         end: {
-            dateTime: moment.tz(booking.return, TZ).format(),
+            dateTime: moment.tz(booking.returnTime, TZ).format(),
             timeZone: TZ
-        }
+        },
+        attendees: [
+            {
+                email: booking.user.email,
+                displayName: booking.user.displayName,
+                responseStatus: 'accepted',
+                additionalGuests: (booking.numPeople - 1)
+            },
+            {
+                email: 'calebkhiebert@gmail.com',
+                displayName: 'Car Booker'
+            }
+        ]
     };
 
     return await Promise.resolve(
         goog.calendar.createCalendarEvent({
+            params: { sendNotifications: true },
             calendarId: 'primary',
-            resource: event
+            resource: event,
         }, userToken)
     )
         .catch(err => console.log(err));

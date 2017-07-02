@@ -88,7 +88,7 @@ app.use(async (req, res, next) => {
 
 app.use(async (req, res, next) => {
     if(req.session['tokens']) {
-        let usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName }, raw: true });
+        let usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName }});
 
         if (usr === undefined || usr === null) {
             const usrCache = req.session.userCache;
@@ -97,6 +97,7 @@ app.use(async (req, res, next) => {
                 resourceName: usrCache.resourceName,
                 email: usrCache.email,
                 name: usrCache.name,
+                token: JSON.stringify(req.session['tokens']),
                 setting: {
                     language: req.session['language']
                 }
@@ -104,13 +105,18 @@ app.use(async (req, res, next) => {
                 include: [ crud.Settings ]
             });
 
-            usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName }, raw: true});
+            usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName }});
 
             console.log('[User %s (%s) logged in for the first time]',
                 usr.name, usr.email);
         }
 
-        req.session.user = usr;
+        if(usr.token !== JSON.stringify(req.session['tokens'])) {
+            usr.token = JSON.stringify(req.session['tokens']);
+            await usr.save();
+        }
+
+        req.session.user = usr.dataValues;
 
         next();
     } else {
@@ -248,11 +254,15 @@ app.get('/accept_booking', async (req, res) => {
         // await mailer.send.creationNotice(bk);
         // console.log('[Sent email to %s]', bk.user.email);
 
-        const cal = await createCalendarEvent(bk, req.session.tokens);
-        bk.calendarId = cal.id;
-        bk.save();
-        console.log('[Successfully added booking for %s to their calendar. id %s]',
-            req.session.user.email, cal.id);
+        try {
+            const cal = await createCalendarEvent(bk, req.session.tokens);
+            bk.calendarId = cal.id;
+            bk.save();
+            console.log('[Successfully added booking for %s to their calendar. id %s]',
+                req.session.user.email, cal.id);
+        } catch (err) {
+            console.log('[Something went wrong when creating a calendar event for a booking] %s', JSON.stringify(err));
+        }
 
         res.redirect('/');
     }
@@ -334,8 +344,8 @@ app.post('/create_booking', async (req, res) => {
         } else {
             let errMsg = {};
             errMsg[validation.error.path] = validation.error.message;
-
-            res.render('create_booking', {bookingRequest: req.session.bookingRequest || {}, validation: errMsg})
+            const vehicleTypes = await crud.Vehicle.aggregate('type', 'DISTINCT', {plain: false});
+            res.render('create_booking', { bookingRequest: req.session.bookingRequest || {}, vehicleTypes, validation: errMsg })
         }
     }
 });
@@ -436,7 +446,6 @@ app.get('/booking/:id', async (req, res) => {
                 }, req.session.tokens));
 
                 res.render('booking', {booking, event: {calendarUrl: cal.htmlLink}})
-
             } catch (err) {
                 console.log(err);
                 res.render('booking', {booking, event: {}});
@@ -529,11 +538,13 @@ Promise.resolve()
     .then(() => console.log('[Loaded Database]'))
     .then(() => localizer.load())
     .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
-    .then(() => setInterval(cleanExpiredBookings, 1000*60))
     .then(() => mailer.init(MAILGUN_API_KEY, MAILGUN_DOMAIN, TZ, crud))
     .then(() => console.log('[Started mailing engines]'))
     .then(() => startServer())
     .then(() => console.log('[Server started on port %s]', PORT))
+    .then(() => setInterval(cleanExpiredBookings, 1000*60))
+    .then(() => setInterval(checkCalendarEvents, 1000*60))
+    .then(() => checkCalendarEvents())
     .catch(err => console.log(err));
 
 function startServer() {
@@ -798,12 +809,32 @@ async function cleanExpiredBookings() {
         let bookingCreateTime = moment.tz(booking.createdAt, TZ);
         let now = moment().tz(TZ);
 
-        console.log(now.diff(bookingCreateTime, 'minutes'));
-
         if(now.diff(bookingCreateTime, 'minutes') > BOOKING_EXPIRY_MINS) {
             booking.status = 'EXPIRED';
             await booking.save();
             console.log('[%s\'s (%s) Booking expired]', booking.user.name, booking.user.email);
+        }
+    }
+}
+
+async function checkCalendarEvents() {
+    const bookings = await crud.Booking.findAll({
+        include: [ crud.User, crud.Vehicle ],
+        where: {
+            status: 'ACTIVE',
+            calendarId: null
+        }
+    });
+
+    for (let bk of bookings) {
+        try {
+            const cal = await createCalendarEvent(bk, JSON.parse(bk.user.token));
+            bk.calendarId = cal.id;
+            await bk.save();
+            console.log('[Created missing calendar event for %s\'s (%s) booking. ID %s]', bk.user.name, bk.user.email, cal.id);
+        } catch (err) {
+            console.log('[Something went wrong while creating a calendar event!]');
+            console.log(err);
         }
     }
 }

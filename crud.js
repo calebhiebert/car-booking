@@ -3,10 +3,14 @@ const Sequelize = require('sequelize');
 const sequelize = new Sequelize('cars', 'user', 'pass', {
     host: 'localhost',
     dialect: 'sqlite',
-    logging() {
-
+    timestamps: true,
+    define: {
+        charset: 'utf8',
+        dialectOptions: {
+            collate: 'utf8_unicode_ci'
+        }
     },
-
+    logging() {},
     pool: {
         max: 5,
         min: 0,
@@ -41,6 +45,10 @@ function init() {
                 isAdmin: {
                     type: Sequelize.BOOLEAN,
                     defaultValue: true,
+                    allowNull: false
+                },
+                token: {
+                    type: Sequelize.TEXT,
                     allowNull: false
                 }
             });
@@ -114,10 +122,10 @@ function init() {
                 },
                 status: {
                     type: Sequelize.ENUM,
-                    values: ['ACTIVE', 'RESERVED', 'CANCELLED', 'EXPIRED'],
+                    values: ['ACTIVE', 'RESERVED', 'CANCELLED', 'EXPIRED', 'FINISHED'],
                     allowNull: false,
                     validate: {
-                        isIn: [['ACTIVE', 'RESERVED', 'CANCELLED', 'EXPIRED']]
+                        isIn: [['ACTIVE', 'RESERVED', 'CANCELLED', 'EXPIRED', 'FINISHED']]
                     }
                 },
                 vehicleMatch: {

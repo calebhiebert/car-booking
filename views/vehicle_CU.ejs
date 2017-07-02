@@ -45,8 +45,9 @@
                     <textarea id="car_notes" name="notes" class="form-control" value="<%= input.notes %>"></textarea>
                 </fieldset>
                 <button type="submit" class="btn btn-primary"><%= operation == 'create' ? 'Add Vehicle' : 'Save' %></button>
+                <a href="/vehicles" class="btn btn-outline-danger">Cancel</a>
                 <% if(operation == 'edit') { %>
-                    <a class="btn btn-outline-danger" href="/delete_vehicle/<%= input.vid %>">Remove Vehicle</a>
+                    <!--<a class="btn btn-outline-danger" href="/delete_vehicle/<%= input.vid %>">Remove Vehicle</a>-->
                 <% } %>
             </form>
         </div>

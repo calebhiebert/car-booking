@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Settings</title>
+    <% include head.ejs %>
+</head>
+<body>
+<% include nav.ejs %>
+    <% if(saved) %>
+    <div class="alert alert-success">
+
+    </div>
+    <div class="container mt-3">
+        <div class="card">
+            <div class="card-block">
+                <h3 class="text-center">Settings</h3>
+                <form method="post" action="/settings">
+                    <% if(sess.user.isAdmin) { %>
+                        <div class="form-check">
+                            <label class="form-check-label">
+                                <input id="adminEmailForNewBookings" name="adminEmailForNewBookings" class="form-check-input" type="checkbox" <%= s.adminEmailForNewBookings ? 'checked' : '' %>>
+                                Send me an email for every new booking created
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <label class="form-check-label">
+                                <input id="adminEmailForCancelledBookings" name="adminEmailForCancelledBookings" class="form-check-input" type="checkbox" <%= s.adminEmailForCancelledBookings ? 'checked' : '' %>>
+                                Send me an email every time a booking is cancelled
+                            </label>
+                        </div>
+                    <% } %>
+                    <div class="form-check">
+                        <label class="form-check-label">
+                            <input id="emailForNewBooking" name="emailForNewBooking" class="form-check-input" type="checkbox" <%= s.emailForNewBooking ? 'checked' : '' %>>
+                            Send me an email when I create new bookings
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <label class="form-check-label">
+                            <input id="emailForUpdatedBooking" name="emailForUpdatedBooking" class="form-check-input" type="checkbox" <%= s.emailForUpdatedBooking ? 'checked' : '' %>>
+                            Send me an email when one of my bookings is changed
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <label class="form-check-label">
+                            <input id="emailForRemovedBooking" name="emailForRemovedBooking" class="form-check-input" type="checkbox" <%= s.emailForRemovedBooking ? 'checked' : '' %>>
+                            Send me an email when some of my bookings is cancelled
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Settings</button>
+                </form>
+            </div>
+        </div>
+    </div>
+<% include scripts.ejs %>
+</body>
+</html>

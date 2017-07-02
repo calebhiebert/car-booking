@@ -22,6 +22,7 @@
                 <li class="list-group-item justify-content-between">Pickup Time <b><%= moment(booking.startTime).tz(TZ).format('LLL') %></b></li>
                 <li class="list-group-item justify-content-between">Return Time <b><%= moment(booking.returnTime).tz(TZ).format('LLL') %></b></li>
                 <li class="list-group-item justify-content-between">Reason <b><%= booking.reason %></b></li>
+                <li class="list-group-item justify-content-between">Number of People <b><%= booking.numPeople %></b></li>
                 <li class="list-group-item justify-content-between">Notes <span><%= booking.notes %></span></li>
             </ul>
         <div class="row justify-content-around mt-3">

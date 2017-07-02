@@ -59,6 +59,7 @@
     "car": "Car",
     "van": "Van",
     "rmv_vcl": "Remove Vehicle",
-    "nothing_here": "There is nothing here :'("
+    "nothing_here": "There is nothing here :'(",
+    "settings": "Settings"
   }
 }

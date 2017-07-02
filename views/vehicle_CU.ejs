@@ -32,6 +32,14 @@
                     <span class="form-control-feedback"><%= validation.numSeats %></span>
                 </fieldset>
 
+                <div class="form-check">
+                    <label class="form-check-label">
+                        <input name="isReserved" type="checkbox" class="form-check-input" <%= input.isReserved ? 'checked' : '' %>>
+                        This is a reserved vehicle
+                    </label>
+                    <p class="form-text text-muted">Reserved vehicles will not be assigned unless they are specifically requested by type</p>
+                </div>
+
                 <fieldset class="form-group">
                     <label for="car_notes">Notes</label>
                     <textarea id="car_notes" name="notes" class="form-control" value="<%= input.notes %>"></textarea>

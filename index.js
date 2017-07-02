@@ -87,8 +87,7 @@ app.use(async (req, res, next) => {
 });
 
 app.use(async (req, res, next) => {
-    if(req.session.tokens) {
-
+    if(req.session['tokens']) {
         let usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName }, raw: true });
 
         if (usr === undefined || usr === null) {
@@ -97,7 +96,12 @@ app.use(async (req, res, next) => {
             await crud.User.create({
                 resourceName: usrCache.resourceName,
                 email: usrCache.email,
-                name: usrCache.name
+                name: usrCache.name,
+                setting: {
+                    language: req.session['language']
+                }
+            }, {
+                include: [ crud.Settings ]
             });
 
             usr = await crud.User.findOne({ where: { resourceName: req.session.userCache.resourceName }, raw: true});
@@ -144,7 +148,7 @@ app.use(async (req, res, next) => {
 });
 
 app.use(async (req, res, next) => {
-    const authedPaths = ['/dash', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
+    const authedPaths = ['/dash', '/settings', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
     const path = req.path;
 
     let isAuthedPath = elementStartsWith(authedPaths, path);
@@ -319,7 +323,8 @@ app.post('/create_booking', async (req, res) => {
                     notes: bk.proposedBooking.notes,
                     userResourceName: req.session.user.resourceName,
                     vehicleVid: bk.proposedBooking.vehicle.vid,
-                    status: 'RESERVED'
+                    status: 'RESERVED',
+                    vehicleMatch: bk.proposedBooking.vehicleMatch
                 });
 
                 res.redirect('/booking_proposal');
@@ -364,7 +369,8 @@ app.post('/add_vehicle', async (req, res) => {
         name: req.body.name.trim(),
         type: req.body.type.trim().toLowerCase(),
         numSeats: req.body.numSeats,
-        notes: req.body.notes.trim()
+        notes: req.body.notes.trim(),
+        isReserved: req.body.isReserved || false
     };
 
     const validation = validateVehicle(vehicle);
@@ -479,6 +485,42 @@ app.get('/booking/:id/cancel', async(req, res) => {
     }
 });
 
+app.get('/settings', async(req, res) => {
+    const user = await crud.User.findOne({
+        where: {
+            resourceName: req.session.user.resourceName
+        },
+        include: [ crud.Settings ]
+    });
+
+    if(user === null) {
+        res.redirect('/');
+    } else {
+        res.render('settings', { s: user.setting, saved: false });
+    }
+});
+
+app.post('/settings', async(req, res) => {
+    const user = await crud.User.findOne({
+        where: {
+            resourceName: req.session.user.resourceName
+        },
+        include: [ crud.Settings ]
+    });
+
+    user.setting = {
+        emailForNewBooking: req.body.emailForNewBooking || false,
+        emailForUpdatedBooking: req.body.emailForUpdatedBooking || false,
+        emailForRemovedBooking: req.body.emailForRemovedBooking || false,
+        adminEmailForNewBookings: req.body.adminEmailForNewBookings || false,
+        adminEmailForCancelledBookings: req.body.adminEmailForCancelledBookings || false
+    };
+
+    await user.save();
+
+    res.render('settings', { s: user.setting, saved: true });
+});
+
 /**
  * BEGIN APP INITIALIZATION
  */
@@ -488,7 +530,6 @@ Promise.resolve()
     .then(() => localizer.load())
     .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
     .then(() => setInterval(cleanExpiredBookings, 1000*60))
-    .then(() => cleanExpiredBookings())
     .then(() => mailer.init(MAILGUN_API_KEY, MAILGUN_DOMAIN, TZ, crud))
     .then(() => console.log('[Started mailing engines]'))
     .then(() => startServer())
@@ -554,7 +595,8 @@ function validateVehicle(vehicle) {
          name: Joi.string().min(3).max(30).required(),
          type: Joi.string().min(2).max(30).required(),
          numSeats: Joi.number().integer().min(1).required(),
-         notes: Joi.string().allow('')
+         notes: Joi.string().allow(''),
+         isReserved: Joi.any()
      });
 
      return Joi.validate(vehicle, schema);
@@ -675,36 +717,58 @@ async function processBooking(booking) {
         }
     }
 
-    let availableVehicles;
+    let availableVehicles = await crud.Vehicle.findAll({ where: { vid: { $notIn: busyVehicles } }, order: [['numSeats', 'ASC']] });
 
-    if(booking.typeRequest !== 'none') {
-        availableVehicles = await crud.Vehicle.findAll({ where: { vid: { $notIn: busyVehicles }, type: booking.typeRequest }, order: [['numSeats', 'ASC']] });
-    } else {
-        availableVehicles = await crud.Vehicle.findAll({ where: { vid: { $notIn: busyVehicles } }, order: [['numSeats', 'ASC']] });
-    }
+    let vehicles = {
+        optimal: [],
+        wrongSeats: [],
+        wrongType: [],
+        wrong: []
+    };
 
-    let optimalVehicle = null;
+    let typeRequested = booking.typeRequest !== 'none';
 
-    availableVehicles.some(v => {
-        if (v.numSeats >= booking.numPeople) {
-            optimalVehicle = v;
-            return true;
-        } else return false;
+    availableVehicles.forEach(v => {
+        if(v.numSeats >= booking.numPeople && ((!typeRequested && !v.isReserved) || v.type === booking.typeRequest)) {
+            vehicles.optimal.push(v);
+        } else if (v.numSeats < booking.numPeople && ((!typeRequested && !v.isReserved) || v.type === booking.typeRequest)) {
+            vehicles.wrongSeats.push(v);
+        } else if (v.numSeats >= booking.numPeople && !v.isReserved) {
+            vehicles.wrongType.push(v);
+        } else if(!v.isReserved) {
+            vehicles.wrong.push(v);
+        }
     });
 
-    if(optimalVehicle === null) {
-        // there is no car available
-        //TODO check if something is available with less seats
+    let chosenOne = null;
+    let vehicleMatch;
+
+    if(vehicles.optimal.length > 0) {
+        chosenOne = vehicles.optimal[0];
+        vehicleMatch = 'OPTIMAL';
+    } else if (vehicles.wrongSeats.length > 0) {
+        chosenOne = vehicles.wrongSeats[0];
+        vehicleMatch = 'WRONG_SEATS';
+    } else if (vehicles.wrongType.length > 0) {
+        chosenOne = vehicles.wrongType[0];
+        vehicleMatch = 'WRONG_TYPE';
+    } else if (vehicles.wrong.length > 0) {
+        chosenOne = vehicles.wrong[0];
+        vehicleMatch = 'WRONG';
+    }
+
+    if(chosenOne === null) {
         return { valid: false };
     } else {
         let proposedBooking = {
+            vehicleMatch: vehicleMatch,
             function: booking.function,
             numPeople: booking.numPeople,
             pickup: booking.pickup,
             return: booking.return,
             reason: booking.reason,
             notes: booking.notes,
-            vehicle: optimalVehicle
+            vehicle: chosenOne
         };
 
         return { valid: true, proposedBooking };

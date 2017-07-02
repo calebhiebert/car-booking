@@ -16,7 +16,7 @@ const sequelize = new Sequelize('cars', 'user', 'pass', {
     storage: './cars2.db'
 });
 
-let User, Vehicle, Booking;
+let User, Vehicle, Booking, Settings;
 
 module.exports = {
     init
@@ -31,15 +31,17 @@ function init() {
                     primaryKey: true
                 },
                 email: {
-                    type: Sequelize.STRING
+                    type: Sequelize.STRING,
+                    allowNull: false
                 },
                 name: {
-                    type: Sequelize.STRING
+                    type: Sequelize.STRING,
+                    allowNull: false
                 },
                 isAdmin: {
                     type: Sequelize.BOOLEAN,
-                    allowNull: false,
-                    defaultValue: false
+                    defaultValue: true,
+                    allowNull: false
                 }
             });
 
@@ -47,22 +49,27 @@ function init() {
                 vid: {
                     type: Sequelize.INTEGER,
                     primaryKey: true,
-                    notNull: true
+                    allowNull: false
                 },
                 name: {
                     type: Sequelize.STRING,
-                    notNull: true
+                    allowNull: false
                 },
                 type: {
                     type: Sequelize.STRING,
-                    notNull: true
+                    allowNull: false
                 },
                 numSeats: {
                     type: Sequelize.INTEGER,
-                    notNull: true
+                    allowNull: false
                 },
                 notes: {
                     type: Sequelize.STRING
+                },
+                isReserved: {
+                    type: Sequelize.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false
                 }
             });
 
@@ -74,23 +81,30 @@ function init() {
                 },
                 function: {
                     type: Sequelize.STRING,
-                    notNull: true
+                    allowNull: false,
+                    validate: {
+                        notEmpty: true
+                    }
                 },
                 numPeople: {
                     type: Sequelize.INTEGER,
-                    notNull: true
+                    allowNull: false,
+                    validate: {
+                        isInt: true,
+                        min: 1
+                    }
                 },
                 startTime: {
                     type: Sequelize.STRING,
-                    notNull: true
+                    allowNull: false
                 },
                 returnTime: {
                     type: Sequelize.STRING,
-                    notNull: true
+                    allowNull: false
                 },
                 reason: {
                     type: Sequelize.STRING,
-                    notNull: true
+                    allowNull: false
                 },
                 notes: {
                     type: Sequelize.STRING
@@ -100,24 +114,71 @@ function init() {
                 },
                 status: {
                     type: Sequelize.ENUM,
-                    values: ['ACTIVE', 'RESERVED', 'CANCELLED', 'EXPIRED']
+                    values: ['ACTIVE', 'RESERVED', 'CANCELLED', 'EXPIRED'],
+                    allowNull: false,
+                    validate: {
+                        isIn: [['ACTIVE', 'RESERVED', 'CANCELLED', 'EXPIRED']]
+                    }
+                },
+                vehicleMatch: {
+                    type: Sequelize.ENUM,
+                    values: ['OPTIMAL', 'WRONG_SEATS', 'WRONG_TYPE', 'WRONG'],
+                    allowNull: false,
+                    validate: {
+                        isIn: [['OPTIMAL', 'WRONG_SEATS', 'WRONG_TYPE', 'WRONG']]
+                    }
                 }
             });
 
             Settings = sequelize.define('setting', {
-
+                emailForNewBooking: {
+                    type: Sequelize.BOOLEAN,
+                    defaultValue: true,
+                    allowNull: false
+                },
+                emailForUpdatedBooking: {
+                    type: Sequelize.BOOLEAN,
+                    defaultValue: true,
+                    allowNull: false
+                },
+                emailForRemovedBooking: {
+                    type: Sequelize.BOOLEAN,
+                    defaultValue: true,
+                    allowNull: false
+                },
+                adminEmailForNewBookings: {
+                    type: Sequelize.BOOLEAN,
+                    defaultValue: true,
+                    allowNull: false
+                },
+                adminEmailForCancelledBookings: {
+                    type: Sequelize.BOOLEAN,
+                    defaultValue: true,
+                    allowNull: false
+                },
+                language: {
+                    type: Sequelize.STRING,
+                    defaultValue: 'english',
+                    allowNull: false,
+                    validate: {
+                        isIn: [['english', 'french']]
+                    }
+                }
             });
 
             Booking.belongsTo(User);
             Booking.belongsTo(Vehicle);
             User.hasMany(Booking);
+            User.hasOne(Settings);
             Vehicle.hasMany(Booking);
+            Settings.belongsTo(User);
 
             sequelize.sync();
 
             module.exports.User = User;
             module.exports.Vehicle = Vehicle;
             module.exports.Booking = Booking;
+            module.exports.Settings = Settings;
 
             resolve();
         } catch (err) {

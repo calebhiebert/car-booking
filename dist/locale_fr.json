@@ -57,6 +57,7 @@
     "vcl_typ": "Vehicle Type",
     "car": "Car",
     "van": "Van",
-    "rmv_vcl": "Remove Vehicle"
+    "rmv_vcl": "Remove Vehicle",
+    "settings": "Settings"
   }
 }

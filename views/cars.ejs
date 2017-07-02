@@ -17,6 +17,7 @@
                         <th>Name</th>
                         <th>Type</th>
                         <th>Number of Seats</th>
+                        <th>Reserved</th>
                         <th>Notes</th>
                     </tr>
                 </thead>
@@ -28,6 +29,7 @@
                             <td><%= vehicle.name %></td>
                             <td><%= vehicle.type %></td>
                             <td><%= vehicle.numSeats %></td>
+                            <td><%= vehicle.isReserved ? 'yes' : 'no' %></td>
                             <td><%- vehicle.notes || '<i class="text-muted">None</i>' %></td>
                         </tr>
                     <% }) %>

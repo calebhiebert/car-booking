@@ -12,6 +12,15 @@
         This booking is not final and will expire at <b><%= moment.tz(booking.createdAt, TZ).add(BOOKING_EXPIRY_MINS, 'minutes').format('LT') %></b>
         if not accepted.
     </div>
+    <% if (booking.vehicleMatch !== 'OPTIMAL') { %>
+        <div class="alert alert-danger">
+            <% if (booking.vehicleMatch === 'WRONG_SEATS') { %>
+                There were no vehicles with the correct amount of seats available, so we chose the next best thing.
+            <% } else if (booking.vehicleMatch === 'WRONG_TYPE') { %>
+                There were no vehicles of the type you requested available. So a different type was chosen.
+            <% } %>
+        </div>
+    <% } %>
     <div class="card card-inverse card-success" style="color: white;">
         <div class="text-center">
             <h1>Success!</h1>

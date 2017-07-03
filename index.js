@@ -439,10 +439,10 @@ app.get('/booking/:id', async (req, res) => {
             res.redirect('/booking_proposal');
         } else {
             try {
-                const cal = await Promise.resolve(goog.calendar.getCalendarEvent({
+                const cal = await goog.calendar.getCalendarEvent({
                     calendarId: 'primary',
                     eventId: booking.calendarId
-                }, req.session.tokens));
+                }, req.session.tokens);
 
                 res.render('booking', {booking, event: {calendarUrl: cal.htmlLink}})
             } catch (err) {
@@ -890,5 +890,13 @@ async function checkCalendarEvents() {
             console.log('[Something went wrong while creating a calendar event!]');
             console.log(err);
         }
+    }
+}
+
+async function refreshGoogTokens() {
+    const users = crud.User.findAll();
+
+    for(let u of users) {
+
     }
 }

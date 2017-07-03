@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Car Booking</title>
+    <% include head.ejs %>
+</head>
+<body>
+<% include nav.ejs %>
+
+<div class="container mt-3">
+    <div class="card">
+        <div class="card-block">
+            <form method="post" action="/booking/<%= booking.id %>/details">
+                <fieldset class="form-group">
+                    <label for="departureTime">Departure Time</label>
+                    <input id="departureTime" name="departureTime" type="text" class="form-control">
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="timeOfReturn">Time Vehicle Returned</label>
+                    <input id="timeOfReturn" name="timeOfReturn" type="text" class="form-control">
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="kmStart">KM's Start</label>
+                    <input id="kmStart" name="kmStart" type="number" class="form-control">
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <label for="kmFinish">KM's Finish</label>
+                    <input id="kmFinish" name="kmFinish" type="number" class="form-control">
+                </fieldset>
+
+                <fieldset class="form-group">
+                    <div class="form-check">
+                        <label class="form-check-label">
+                            <input class="form-check-input" type="radio" name="bOrP" id="business" value="business" checked>
+                            Business
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <label class="form-check-label">
+                            <input class="form-check-input" type="radio" name="bOrP" id="personal" value="personal" checked>
+                            Personal
+                        </label>
+                    </div>
+                </fieldset>
+            </form>
+        </div>
+    </div>
+</div>
+
+<% include scripts.ejs %>
+</body>
+</html>

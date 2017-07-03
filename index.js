@@ -154,7 +154,7 @@ app.use(async (req, res, next) => {
 });
 
 app.use(async (req, res, next) => {
-    const authedPaths = ['/dash', '/settings', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
+    const authedPaths = ['/dash', '/my_bookings', '/settings', '/no_cars', '/booking_proposal', '/accept_booking', '/logout', '/create_booking', '/booking', '/request_perms'];
     const path = req.path;
 
     let isAuthedPath = elementStartsWith(authedPaths, path);
@@ -178,13 +178,12 @@ app.get('/', function (req, res) {
 });
 
 app.get('/setlang/:lang', (req, res) => {
-
     let lang = req.params.lang;
 
     if(lang !== 'english' || lang !== 'french')
         lang = 'english';
 
-    req.session.language = req.params.lang;
+    req.session.language = lang;
 
     let backUrl = req.header('Referer') || '/';
     res.redirect(backUrl);
@@ -494,6 +493,10 @@ app.get('/booking/:id/cancel', async(req, res) => {
     }
 });
 
+app.get('/booking/:id/details', async(req, res) => {
+
+});
+
 app.get('/settings', async(req, res) => {
     const user = await crud.User.findOne({
         where: {
@@ -528,6 +531,17 @@ app.post('/settings', async(req, res) => {
     await user.save();
 
     res.render('settings', { s: user.setting, saved: true });
+});
+
+app.get('/my_bookings', async (req, res) => {
+    const bookings = await crud.Booking.findAll({
+        where: {
+            userResourceName: req.session.user.resourceName
+        },
+        include: [ crud.User, crud.Vehicle ]
+    });
+
+    res.render('my_bookings', { bookings });
 });
 
 /**
@@ -829,9 +843,13 @@ async function checkCalendarEvents() {
     for (let bk of bookings) {
         try {
             const cal = await createCalendarEvent(bk, JSON.parse(bk.user.token));
-            bk.calendarId = cal.id;
-            await bk.save();
-            console.log('[Created missing calendar event for %s\'s (%s) booking. ID %s]', bk.user.name, bk.user.email, cal.id);
+            if(cal !== null) {
+                bk.calendarId = cal.id;
+                await bk.save();
+                console.log('[Created missing calendar event for %s\'s (%s) booking. ID %s]', bk.user.name, bk.user.email, cal.id);
+            } else {
+                console.log('Calendar Error')
+            }
         } catch (err) {
             console.log('[Something went wrong while creating a calendar event!]');
             console.log(err);

@@ -135,6 +135,37 @@ function init() {
                     validate: {
                         isIn: [['OPTIMAL', 'WRONG_SEATS', 'WRONG_TYPE', 'WRONG']]
                     }
+                },
+                dDepartureTime: {
+                    type: Sequelize.STRING
+                },
+                dReturnTime: {
+                    type: Sequelize.STRING
+                },
+                dKMStart: {
+                    type: Sequelize.INTEGER
+                },
+                dKMFinish: {
+                    type: Sequelize.INTEGER
+                },
+                dBorP: {
+                    type: Sequelize.ENUM,
+                    values: ['BUSINESS', 'PERSONAL'],
+                    validate: {
+                        isIn: [['BUSINESS', 'PERSONAL']]
+                    }
+                },
+                dWasClean: {
+                    type: Sequelize.BOOLEAN
+                },
+                dFuelStationName: {
+                    type: Sequelize.BOOLEAN
+                },
+                dFuelAmount: {
+                    type: Sequelize.DOUBLE
+                },
+                dIncidentReport: {
+                    type: Sequelize.STRING
                 }
             });
 

@@ -44,6 +44,7 @@
             </div>
         </div>
     </div>
+    <a href="/booking/<%= booking.id %>/details" class="btn btn-info">Details</a>
     <% if (booking.status === 'ACTIVE') {%>
         <% if (event.calendarUrl !== undefined) { %>
             <a href="<%= event.calendarUrl %>" target="_blank" class="btn btn-outline-info mt-2">Calendar</a>

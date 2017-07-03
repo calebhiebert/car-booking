@@ -494,7 +494,43 @@ app.get('/booking/:id/cancel', async(req, res) => {
 });
 
 app.get('/booking/:id/details', async(req, res) => {
+    const bk = await crud.Booking.findOne({
+        where: {
+            id: req.params.id
+        }
+    });
 
+    if(bk !== null) {
+        res.render('booking_details', { bk });
+    } else {
+        res.redirect('/');
+    }
+});
+
+app.post('/booking/:id/details', async(req, res) => {
+    let bk = await crud.Booking.findOne({
+        where: {
+            id: req.params.id
+        }
+    });
+
+    bk.dDepartureTime = req.body.departureTime || null;
+    bk.dReturnTime = req.body.returnTime || null;
+    bk.dKMStart = req.body.kmStart || null;
+    bk.dKMFInish = req.body.kmFinish || null;
+    bk.dBorP = req.body.bOrP || null;
+    bk.dWasClean = req.body.vehicleClean || null;
+    bk.dFuelStationName = req.body.fuelStationName || null;
+    bk.dFuelAmount = req.body.fuelAmount || null;
+    bk.dIncidentReport = req.body.incidentReport || null;
+
+    bk = await bk.save();
+
+    if(bk !== null) {
+        res.render('booking_details', { bk });
+    } else {
+        res.redirect('/');
+    }
 });
 
 app.get('/settings', async(req, res) => {

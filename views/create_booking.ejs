@@ -42,13 +42,13 @@
 
                     <fieldset class="form-group time<%= validation.startTime != undefined ? ' has-danger' : '' %>">
                         <label for="startTime">Start Time</label>
-                        <input id="startTime" name="startTime" class="form-control time start" type="text" value="<%= (bookingRequest.startTime !== undefined && bookingRequest.startTime !== '') ? moment.tz(bookingRequest.startTime, TZ).format('h:mm A') : '' %>">
+                        <input id="startTime" name="startTime" class="form-control time start" type="text" value="<%= (bookingRequest.startTime !== undefined && bookingRequest.startTime !== '') ? moment.tz(bookingRequest.startTime, 'h:mm A', TZ).format('h:mm A') : '' %>">
                         <span class="form-control-feedback"><%= validation.startTime %></span>
                     </fieldset>
 
                     <fieldset class="form-group time<%= validation.returnTime != undefined ? ' has-danger' : '' %>">
                         <label for="returnTime">Return Time</label>
-                        <input id="returnTime" name="returnTime" class="form-control time end" type="text" value="<%= (bookingRequest.returnTime !== undefined && bookingRequest.returnTime !== '') ? moment.tz(bookingRequest.returnTime, TZ).format('h:mm A') : '' %>" >
+                        <input id="returnTime" name="returnTime" class="form-control time end" type="text" value="<%= (bookingRequest.returnTime !== undefined && bookingRequest.returnTime !== '') ? moment.tz(bookingRequest.returnTime, 'h:mm A', TZ).format('h:mm A') : '' %>" >
                         <span class="form-control-feedback"><%= validation.returnTime %></span>
                     </fieldset>
                 </div>

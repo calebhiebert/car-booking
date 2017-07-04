@@ -260,7 +260,11 @@ app.get('/accept_booking', async (req, res) => {
             console.log('[Successfully added booking for %s to their calendar. id %s]',
                 req.session.user.email, cal.id);
         } catch (err) {
-            console.log('[Something went wrong when creating a calendar event for a booking] %s', JSON.stringify(err));
+            if(err instanceof TypeError) {
+                console.log('[Tried to update the booking entry with a calendar ID but the event does not exist!]')
+            } else {
+                console.log('[Something went wrong when creating a calendar event for a booking] %s', JSON.stringify(err));
+            }
         }
 
         res.redirect('/');
@@ -716,7 +720,14 @@ async function createCalendarEvent(booking, userToken) {
             resource: event,
         }, userToken)
     )
-        .catch(err => console.log(err));
+        .catch(err => {
+            if(err instanceof TypeError) {
+                console.log('TYPE ERROR');
+                console.log(err);
+            } else {
+                console.log('[Something went wrong when creating a calendar event for a booking] %s', JSON.stringify(err));
+            }
+        });
 }
 
 function validateVehicle(vehicle) {
@@ -772,7 +783,7 @@ function validateBookingDetails(details) {
 function basicBookingValidation(booking) {
     const schema = Joi.object().keys({
         function: Joi.string().min(3).max(60).required(),
-        numPeople: Joi.number().min(1).required(),
+        numPeople: Joi.number().min(1).max(Number.MAX_SAFE_INTEGER).required(),
         startDate: Joi.any().required(),
         returnDate: Joi.any().required(),
         startTime: Joi.any().required(),
@@ -879,7 +890,7 @@ async function processBooking(booking) {
         let bookingStart = moment.tz(booking.startTime, TZ);
         let bookingReturn = moment.tz(booking.returnTime, TZ);
 
-        if(requestedStart.isBetween(bookingStart, bookingReturn, null, '(]') || bookingStart.isBetween(requestedStart, requestedReturn, null, '[]')) {
+        if(requestedStart.isBetween(bookingStart, bookingReturn, null, '()') || bookingStart.isBetween(requestedStart, requestedReturn, null, '[]')) {
             busyVehicles.push(booking.vehicle.vid);
         }
     }

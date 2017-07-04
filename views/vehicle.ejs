@@ -45,7 +45,12 @@
                 <% if (latestKmUpdate === null) { %>
                     <small class="text-muted font-italic">No data available at this time</small>
                 <% } %>
-
+            </p>
+            <p>
+                Vehicle ID: <%= vehicle.vid %><br/>
+                Vehicle Type: <%= vehicle.type %><br/>
+                Number of Seats: <%= vehicle.numSeats %><br/>
+                Notes: <%= vehicle.notes %>
             </p>
         </div>
 

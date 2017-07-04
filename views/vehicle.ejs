@@ -1,0 +1,76 @@
+<%
+    let gasAmount = 0;
+    if(vehicle.bookings != undefined) {
+        vehicle.bookings.forEach(bk => {
+            if (bk.dFuelAmount !== null) gasAmount += bk.dFuelAmount
+        });
+    }
+
+    let latestKmUpdate = null;
+    if(vehicle.bookings != undefined) {
+        vehicle.bookings.some(bk => {
+            if (bk.dKMFinish !== null) {
+                latestKmUpdate = bk;
+                return true;
+            }
+
+            return false;
+        });
+    }
+%>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Car Booking</title>
+    <% include head.ejs %>
+</head>
+<body>
+<% include nav.ejs %>
+
+<div class="container mt-3">
+    <div class="card">
+        <div class="card-block">
+            <h3 class="text-center"><%= vehicle.name %></h3>
+            <p>
+                Total spent on gas: <b>$<%= gasAmount %></b>
+            </p>
+            <p>
+                KM:
+                <% if(latestKmUpdate !== null) { %>
+                    <%= latestKmUpdate.dKMFinish %>
+                    <small class="text-muted">(as of <%= moment.tz(latestKmUpdate.updatedAt, TZ).format('LLL') %>)</small>
+                <% } %>
+
+                <% if (latestKmUpdate === null) { %>
+                    <small class="text-muted font-italic">No data available at this time</small>
+                <% } %>
+
+            </p>
+        </div>
+
+        <h4 class="text-center">Bookings</h4>
+        <div class="list-group list-group-flush">
+            <% if (vehicle.bookings !== undefined) { %>
+                <% for(let booking of vehicle.bookings) { %>
+                    <%
+                        let start = moment.tz(booking.startTime, TZ)
+                        let finish = moment.tz(booking.returnTime, TZ)
+                    %>
+                    <a href="/booking/<%= booking.id %>" class="list-group-item list-group-item-action">
+                        <%= booking.user.name %> on
+                        <%= start.format('MMM Mo') %> from
+                        <%= start.format('HH:mm') %> to
+                        <%= finish.format('MMM Mo, HH:mm') %>
+                    </a>
+                <% } %>
+            <% } else { %>
+                <a class="list-group-item list-group-item-action"><span class="text-muted">There are no bookings at this time :(</span></a>
+            <% } %>
+        </div>
+    </div>
+</div>
+
+<% include scripts.ejs %>
+</body>
+</html>

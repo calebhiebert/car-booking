@@ -16,69 +16,78 @@
                 Your responses will be saved.
             </p>
             <form method="post" action="/booking/<%= bk.id %>/details">
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.dDepartureTime != undefined ? ' has-danger' : '' %>">
                     <label for="departureTime">Departure Time</label>
                     <input id="departureTime" name="departureTime" type="text" class="form-control" value="<%= bk.dDepartureTime %>">
+                    <span class="form-control-feedback"><%= validation.dDepartureTime %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.dReturnTime != undefined ? ' has-danger' : '' %>">
                     <label for="timeOfReturn">Time Vehicle Returned</label>
                     <input id="timeOfReturn" name="timeOfReturn" type="text" class="form-control" value="<%= bk.dReturnTime %>">
+                    <span class="form-control-feedback"><%= validation.dReturnTime %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.dKMStart != undefined ? ' has-danger' : '' %>">
                     <label for="kmStart">KM's Start</label>
                     <input id="kmStart" name="kmStart" type="number" class="form-control" value="<%= bk.dKMStart %>">
+                    <span class="form-control-feedback"><%= validation.dKMStart %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.dKMFInish != undefined ? ' has-danger' : '' %>">
                     <label for="kmFinish">KM's Finish</label>
                     <input id="kmFinish" name="kmFinish" type="number" class="form-control" value="<%= bk.dKMFinish %>">
+                    <span class="form-control-feedback"><%= validation.dKMFInish %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.dBorP != undefined ? ' has-danger' : '' %>">
                     <label class="form-control-label">Business or Personal</label>
                     <div class="form-check">
                         <label class="form-check-label">
-                            <input class="form-check-input" type="radio" name="bOrP" id="business" value="BUSINESS" checked>
+                            <input class="form-check-input" type="radio" name="bOrP" id="business" value="BUSINESS" <%= bk.dBorP == 'BUSINESS' ? 'checked' : '' %>>
                             Business
                         </label>
                     </div>
                     <div class="form-check">
                         <label class="form-check-label">
-                            <input class="form-check-input" type="radio" name="bOrP" id="personal" value="PERSONAL">
+                            <input class="form-check-input" type="radio" name="bOrP" id="personal" value="PERSONAL" <%= bk.dBorP == 'PERSONAL' ? 'checked' : '' %>>
                             Personal
                         </label>
                     </div>
+                    <span class="form-control-feedback"><%= validation.dBorP %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.dWasClean != undefined ? ' has-danger' : '' %>">
                     <div class="form-check">
                         <label class="form-check-label">
                             <input class="form-check-input" type="checkbox" name="vehicleClean" id="vehicleClean" <%= bk.dWasClean ? 'checked' : '' %>>
                             The vehicle was clean inside and out.
                         </label>
                     </div>
+                    <span class="form-control-feedback"><%= validation.dWasClean %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.dFuelStationName != undefined ? ' has-danger' : '' %>">
                     <label for="fuelStationName">Name of Gas Station (Leave blank if no gas was purchased)</label>
                     <input id="fuelStationName" type="text" name="fuelStationName" class="form-control" value="<%= bk.dFuelStationName %>">
+                    <span class="form-control-feedback"><%= validation.dFuelStationName %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.dFuelAmount != undefined ? ' has-danger' : '' %>">
                     <label for="fuelAmount">Fuel Cost (Leave blank if no gas was purchased)</label>
                     <div class="input-group">
                         <span class="input-group-addon">$</span>
-                        <input type="number" id="fuelAmount" name="fuelAmount" class="form-control" value="<%= bk.dFuelAmount %>">
+                        <input type="number" id="fuelAmount" name="fuelAmount" step="0.01" class="form-control" value="<%= bk.dFuelAmount %>">
                     </div>
+                    <span class="form-control-feedback"><%= validation.dFuelAmount %></span>
                 </fieldset>
 
-                <fieldset class="form-group">
+                <fieldset class="form-group<%= validation.dIncidentReport != undefined ? ' has-danger' : '' %>">
                     <label class="form-check-label">
                         <input id="incidentReport" name="incidentReport" class="form-check-input" type="checkbox" <%= bk.dIncidentReport ? 'checked' : '' %>>
                         I have an incident to report
                     </label>
+                    <span class="form-control-feedback"><%= validation.dIncidentReport %></span>
                 </fieldset>
 
                 <button type="submit" class="btn btn-primary">Save</button>

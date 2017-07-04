@@ -137,7 +137,7 @@ app.use(async (req, res, next) => {
 });
 
 app.use(async (req, res, next) => {
-    const adminPaths = ['/admin', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
+    const adminPaths = ['/admin', '/vehicle', '/revoke_admin', '/grant_admin', '/add_vehicle', '/edit_vehicle', '/vehicles'];
     const path = req.path;
 
     let isAdminPath = elementStartsWith(adminPaths, path);
@@ -323,7 +323,7 @@ app.post('/create_booking', async (req, res) => {
             let bk = await processBooking(booking);
 
             if (bk.valid) {
-                const newBooking = await crud.Booking.create({
+                await crud.Booking.create({
                     function: bk.proposedBooking.function,
                     numPeople: bk.proposedBooking.numPeople,
                     startTime: bk.proposedBooking.pickup,
@@ -335,6 +335,8 @@ app.post('/create_booking', async (req, res) => {
                     status: 'RESERVED',
                     vehicleMatch: bk.proposedBooking.vehicleMatch
                 });
+
+                delete req.session.bookingRequest;
 
                 res.redirect('/booking_proposal');
             } else {
@@ -501,7 +503,7 @@ app.get('/booking/:id/details', async(req, res) => {
     });
 
     if(bk !== null) {
-        res.render('booking_details', { bk });
+        res.render('booking_details', { bk, validation: {} });
     } else {
         res.redirect('/');
     }
@@ -513,21 +515,43 @@ app.post('/booking/:id/details', async(req, res) => {
             id: req.params.id
         }
     });
+    
+    const details = {
+        dDepartureTime: req.body.departureTime,
+        dReturnTime: req.body.returnTime,
+        dKMStart: req.body.kmStart,
+        dKMFInish: req.body.kmFinish,
+        dBorP: req.body.bOrP,
+        dWasClean: (req.body.vehicleClean === 'on'),
+        dFuelStationName: req.body.fuelStationName,
+        dFuelAmount: req.body.fuelAmount,
+        dIncidentReport: (req.body.incidentReport === 'on')
+    };
 
-    bk.dDepartureTime = req.body.departureTime || null;
-    bk.dReturnTime = req.body.returnTime || null;
-    bk.dKMStart = req.body.kmStart || null;
-    bk.dKMFInish = req.body.kmFinish || null;
-    bk.dBorP = req.body.bOrP || null;
-    bk.dWasClean = req.body.vehicleClean || null;
-    bk.dFuelStationName = req.body.fuelStationName || null;
-    bk.dFuelAmount = req.body.fuelAmount || null;
-    bk.dIncidentReport = req.body.incidentReport || null;
+    let validation = validateBookingDetails(details);
+    let val = {};
 
-    bk = await bk.save();
+    if(validation.error !== null) {
+        val[validation.error.path] = validation.error.message;
+        console.log(validation);
+        console.log(val);
+    } else {
+        bk.dDepartureTime = req.body.departureTime || null;
+        bk.dReturnTime = req.body.timeOfReturn || null;
+        bk.dKMStart = req.body.kmStart || null;
+        bk.dKMFinish = req.body.kmFinish || null;
+        bk.dBorP = req.body.bOrP || null;
+        bk.dWasClean = req.body.vehicleClean || null;
+        bk.dFuelStationName = req.body.fuelStationName || null;
+        bk.dFuelAmount = req.body.fuelAmount || null;
+        bk.dIncidentReport = req.body.incidentReport || null;
+
+        bk = await bk.save();
+        res.redirect('/')
+    }
 
     if(bk !== null) {
-        res.render('booking_details', { bk });
+        res.render('booking_details', { bk, validation: val });
     } else {
         res.redirect('/');
     }
@@ -578,6 +602,37 @@ app.get('/my_bookings', async (req, res) => {
     });
 
     res.render('my_bookings', { bookings });
+});
+
+app.get('/vehicle/:id', async (req, res) => {
+    let vehicle = await crud.Vehicle.findOne({
+        where: {
+            vid: req.params.id
+        },
+        include: [
+            {
+                model: crud.Booking,
+                where: {
+                    status: {
+                        $in: ['ACTIVE', 'FINISHED']
+                    }
+                },
+                include: [ crud.User ],
+                order: [
+                    ['returnTime', 'DESC']
+                ]
+            }
+        ]
+    });
+
+    if(vehicle === null)
+        vehicle = await crud.Vehicle.findOne({where: {vid: req.params.id}});
+
+    if(vehicle === null) {
+        res.redirect('/');
+    } else {
+        res.render('vehicle', { vehicle });
+    }
 });
 
 /**
@@ -661,6 +716,43 @@ function validateVehicle(vehicle) {
      });
 
      return Joi.validate(vehicle, schema);
+}
+
+function validateBookingDetails(details) {
+    let schema = Joi.object().keys({
+        dDepartureTime: Joi.string().allow(''),
+        dReturnTime: Joi.string().allow(''),
+        dKMStart: Joi.number().integer().greater(0).allow(''),
+        dKMFInish: Joi.number().integer().greater(0).allow(''),
+        dBorP: Joi.string().allow(''),
+        dWasClean: Joi.boolean().allow(''),
+        dFuelStationName: Joi.string().allow(''),
+        dFuelAmount: Joi.number().precision(2).greater(0).allow(''),
+        dIncidentReport: Joi.boolean().allow('')
+    });
+    
+    jErr = Joi.validate(details, schema);
+    
+    if(jErr.error !== null) {
+        return niceifyJOIErrors(jErr.error);
+    }
+
+    let e = {
+        error: { }
+    };
+
+    let departure = moment.tz(details.dDepartureTime, 'h:mm A', TZ);
+    if(!departure.isValid() && details.dDepartureTime !== '') {
+        e.error = {path: 'dDepartureTime', message: 'You must enter a valid time'};
+        return e;
+    }
+
+    let dReturn = moment.tz(details.dReturnTime, 'h:mm A', TZ);
+    if(!dReturn.isValid() && details.dReturnTime !== '') {
+        e.error = {path: 'dReturnTime', message: 'You must enter a valid time.'}
+    }
+    
+    return {error: null};
 }
 
 function basicBookingValidation(booking) {
@@ -890,13 +982,5 @@ async function checkCalendarEvents() {
             console.log('[Something went wrong while creating a calendar event!]');
             console.log(err);
         }
-    }
-}
-
-async function refreshGoogTokens() {
-    const users = crud.User.findAll();
-
-    for(let u of users) {
-
     }
 }

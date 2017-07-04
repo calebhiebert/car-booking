@@ -585,7 +585,8 @@ app.post('/settings', async(req, res) => {
         emailForUpdatedBooking: req.body.emailForUpdatedBooking || false,
         emailForRemovedBooking: req.body.emailForRemovedBooking || false,
         adminEmailForNewBookings: req.body.adminEmailForNewBookings || false,
-        adminEmailForCancelledBookings: req.body.adminEmailForCancelledBookings || false
+        adminEmailForCancelledBookings: req.body.adminEmailForCancelledBookings || false,
+        adminAddEventsToCalendar: req.body.adminAddEventsToCalendar || false
     };
 
     await user.save();
@@ -687,13 +688,26 @@ async function createCalendarEvent(booking, userToken) {
                 displayName: booking.user.displayName,
                 responseStatus: 'accepted',
                 additionalGuests: (booking.numPeople - 1)
-            },
-            {
-                email: 'calebkhiebert@gmail.com',
-                displayName: 'Car Booker'
             }
         ]
     };
+
+    const admins = await crud.User.findAll({
+        where: {
+            isAdmin: true
+        },
+        include: [ crud.Settings ]
+    });
+
+    admins.forEach(admin => {
+        if(admin.setting.adminAddEventsToCalendar && admin.email !== booking.user.email) {
+            event.attendees.push({
+                email: admin.email,
+                displayName: admin.name,
+                resposeStatus: 'declined'
+            });
+        }
+    });
 
     return await Promise.resolve(
         goog.calendar.createCalendarEvent({

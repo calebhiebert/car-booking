@@ -20,13 +20,19 @@
                         <div class="form-check">
                             <label class="form-check-label">
                                 <input id="adminEmailForNewBookings" name="adminEmailForNewBookings" class="form-check-input" type="checkbox" <%= s.adminEmailForNewBookings ? 'checked' : '' %>>
-                                Send me an email for every new booking created
+                                Send me an email for every new booking created (admin)
                             </label>
                         </div>
                         <div class="form-check">
                             <label class="form-check-label">
                                 <input id="adminEmailForCancelledBookings" name="adminEmailForCancelledBookings" class="form-check-input" type="checkbox" <%= s.adminEmailForCancelledBookings ? 'checked' : '' %>>
-                                Send me an email every time a booking is cancelled
+                                Send me an email every time a booking is cancelled (admin)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <label class="form-check-label">
+                                <input id="adminAddEventsToCalendar" name="adminAddEventsToCalendar" class="form-check-input" type="checkbox" <%= s.adminAddEventsToCalendar ? 'checked' : '' %>>
+                                Add all bookings to my calendar (admin)
                             </label>
                         </div>
                     <% } %>

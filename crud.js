@@ -195,6 +195,11 @@ function init() {
                     defaultValue: true,
                     allowNull: false
                 },
+                adminAddEventsToCalendar: {
+                    type: Sequelize.BOOLEAN,
+                    defaultValue: true,
+                    allowNull: false
+                },
                 language: {
                     type: Sequelize.STRING,
                     defaultValue: 'english',

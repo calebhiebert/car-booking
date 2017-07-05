@@ -59,6 +59,13 @@ app.locals = {
 };
 
 app.use(async (req, res, next) => {
+    res.setHeader('Content-Security-Policy',
+        "default-src 'self'; script-src 'self'; style-src 'self' fonts.googleapis.com; img-src 'self' data:; " +
+        "font-src fonts.gstatic.com fonts.googleapis.com; form-action 'self';");
+    next();
+});
+
+app.use(async (req, res, next) => {
     if(crud.isConnected)
         next();
     else
@@ -645,6 +652,14 @@ app.get('/vehicle/:id', async (req, res) => {
     } else {
         res.render('vehicle', { vehicle });
     }
+});
+
+app.get('/dash.vis.js', (req, res) => {
+    res.render('dash_vis_js');
+});
+
+app.get('/create.booking.js', (req, res) => {
+    res.render('create_booking_js');
 });
 
 app.use(async (req, res, next) => {

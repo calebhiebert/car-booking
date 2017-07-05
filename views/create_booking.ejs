@@ -5,7 +5,7 @@
     <% include head.ejs %>
     <link rel="stylesheet" href="/jquery.timepicker.css">
     <link rel="stylesheet" href="/bootstrap-datepicker3.standalone.min.css">
-    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/timepicker/1.3.5/jquery.timepicker.min.css">
+    <link rel="stylesheet" href="/jquery.timepicker.min.css">
 </head>
 <body>
 <% include nav.ejs %>
@@ -86,42 +86,6 @@
 <script src="/jquery.timepicker.min.js"></script>
 <script src="/moment.js"></script>
 <script src="/moment-timezone-with-data-2012-2022.min.js"></script>
-<script>
-    $('#daterange .date').datepicker({
-        format: 'yyyy-mm-dd',
-        autoclose: true
-    });
-
-    $('#startTime').timepicker({
-        timeFormat: 'h:mm p',
-        interval: 30,
-        minTime: '00:00',
-        maxTime: '23:59',
-        startTime: '7:00 AM',
-        dynamic: false,
-        dropdown: true,
-        scrollbar: false
-    });
-
-    $('#returnTime').timepicker({
-        timeFormat: 'h:mm p',
-        interval: 30,
-        minTime: '00:00',
-        maxTime: '23:59',
-        startTime: '8:00 AM',
-        dynamic: false,
-        dropdown: true,
-        scrollbar: false
-    });
-
-    $('#daterange').datepair({
-        parseTime(el) {
-            return moment.tz($(el).val(), 'h:mm A', '<%= TZ %>').toDate();
-        },
-        parseDate(el) {
-            return moment.tz($(el).val(), 'YYYY-MM-DD', '<%= TZ %>').toDate();
-        }
-    });
-</script>
+<script src="/create.booking.js"></script>
 </body>
 </html>

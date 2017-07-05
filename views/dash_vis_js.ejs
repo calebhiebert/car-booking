@@ -1,0 +1,14 @@
+let container = document.getElementById('vis');
+let items = new vis.DataSet();
+let options = {
+    editable: false,
+    start: '<%= moment().tz(TZ).format() %>',
+    end: '<%= moment().tz(TZ).add(9, 'hours').format() %>'
+};
+
+let data = JSON.parse(document.getElementById('data-json').innerText);
+
+let timeline = new vis.Timeline(container, data, options);
+
+items.clear();
+items.add(data);

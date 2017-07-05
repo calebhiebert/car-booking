@@ -1,0 +1,35 @@
+$('#daterange .date').datepicker({
+    format: 'yyyy-mm-dd',
+    autoclose: true
+});
+
+$('#startTime').timepicker({
+    timeFormat: 'h:mm p',
+    interval: 30,
+    minTime: '00:00',
+    maxTime: '23:59',
+    startTime: '7:00 AM',
+    dynamic: false,
+    dropdown: true,
+    scrollbar: false
+});
+
+$('#returnTime').timepicker({
+    timeFormat: 'h:mm p',
+    interval: 30,
+    minTime: '00:00',
+    maxTime: '23:59',
+    startTime: '8:00 AM',
+    dynamic: false,
+    dropdown: true,
+    scrollbar: false
+});
+
+$('#daterange').datepair({
+    parseTime(el) {
+        return moment.tz($(el).val(), 'h:mm A', '<%= TZ %>').toDate();
+    },
+    parseDate(el) {
+        return moment.tz($(el).val(), 'YYYY-MM-DD', '<%= TZ %>').toDate();
+    }
+});

@@ -46,7 +46,7 @@ app.use(session({
     resave: true,
     store: new sqstore({table: 'sessions', dir: '.'}),
     saveUninitialized: true,
-    cookie: { }
+    cookie: { secure: true }
 }));
 
 // all of these variables will be available in the templates
@@ -61,7 +61,9 @@ app.locals = {
 app.use(async (req, res, next) => {
     res.setHeader('Content-Security-Policy',
         "default-src 'self'; script-src 'self'; style-src 'self' fonts.googleapis.com; img-src 'self' data:; " +
-        "font-src fonts.gstatic.com fonts.googleapis.com; form-action 'self';");
+        "font-src fonts.gstatic.com fonts.googleapis.com; form-action 'self'; frame-ancestors 'none'");
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     next();
 });
 
@@ -655,10 +657,12 @@ app.get('/vehicle/:id', async (req, res) => {
 });
 
 app.get('/dash.vis.js', (req, res) => {
+    res.setHeader('Content-Type', 'text/javascript');
     res.render('dash_vis_js');
 });
 
 app.get('/create.booking.js', (req, res) => {
+    res.setHeader('Content-Type', 'text/javascript');
     res.render('create_booking_js');
 });
 

@@ -27,7 +27,7 @@ module.exports = {
 };
 
 function init() {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         try {
             User = sequelize.define('user', {
                 resourceName: {
@@ -224,8 +224,12 @@ function init() {
             module.exports.Booking = Booking;
             module.exports.Settings = Settings;
 
+            await sequelize.authenticate();
+
+            module.exports.isConnected = true;
             resolve();
         } catch (err) {
+            module.exports.isConnected = false;
             reject(err);
         }
     })

@@ -59,6 +59,13 @@ app.locals = {
 };
 
 app.use(async (req, res, next) => {
+    if(crud.isConnected)
+        next();
+    else
+        res.render('db_err');
+});
+
+app.use(async (req, res, next) => {
 
     if(req.session['language'] === undefined)
         req.session['language'] = 'english';
@@ -638,6 +645,10 @@ app.get('/vehicle/:id', async (req, res) => {
     } else {
         res.render('vehicle', { vehicle });
     }
+});
+
+app.use(async (req, res, next) => {
+    res.render('404');
 });
 
 /**

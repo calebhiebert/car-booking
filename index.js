@@ -25,6 +25,7 @@ const localizer = require('./localizer');
 const goog = require('./googlestuff');
 const crud = require('./crud');
 const mailer = require('./mailer');
+const hasher = require('./sri_hasher');
 
 let prod = process.argv[2] === 'prod';
 
@@ -46,7 +47,7 @@ app.use(session({
     resave: true,
     store: new sqstore({table: 'sessions', dir: '.'}),
     saveUninitialized: true,
-    cookie: { secure: true }
+    cookie: { secure: prod }
 }));
 
 // all of these variables will be available in the templates
@@ -55,7 +56,8 @@ app.locals = {
     GOOGLE_CLIENT_ID,
     BOOKING_EXPIRY_MINS,
     TZ,
-    genAuthUrl: goog.genAuthUrl
+    genAuthUrl: goog.genAuthUrl,
+    sri: hasher.files
 };
 
 app.use(async (req, res, next) => {
@@ -64,6 +66,7 @@ app.use(async (req, res, next) => {
         "font-src fonts.gstatic.com fonts.googleapis.com; form-action 'self'; frame-ancestors 'none'");
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
     next();
 });
 
@@ -680,6 +683,7 @@ Promise.resolve()
     .then(langs => console.log('[Loaded %s locales]', Object.keys(langs).length))
     .then(() => mailer.init(MAILGUN_API_KEY, MAILGUN_DOMAIN, TZ, crud))
     .then(() => console.log('[Started mailing engines]'))
+    .then(() => hasher.init())
     .then(() => startServer())
     .then(() => console.log('[Server started on port %s]', PORT))
     .then(() => setInterval(cleanExpiredBookings, 1000*60))

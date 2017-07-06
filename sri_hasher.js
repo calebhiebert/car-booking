@@ -1,7 +1,7 @@
 const files = {
     bootstrap: {path: './dist/bootstrap.min.js', integrity: null},
-    bootstrapDatepicker: {path: './dist/bootstrap-datepicker.min.js', integrity: null},
-    datepair: {path: './dist/datepair.min.js', integrity: null},
+    datepicker: {path: './dist/bootstrap-datepicker.min.js', integrity: null},
+    datepair: {path: './dist/jquery.datepair.min.js', integrity: null},
     timepicker: {path: './dist/jquery.timepicker.min.js', integrity: null},
     jquery: {path: './dist/jquery-3.2.1.min.js', integrity: null},
     moment: {path: './dist/moment.min.js', integrity: null},

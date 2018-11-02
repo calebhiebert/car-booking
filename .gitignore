@@ -85,3 +85,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+sessions
+cars.db
